@@ -18,7 +18,7 @@ help:
 	@echo "make setup-apis                 # 必要なGCP APIを有効化（初回のみ）"
 	@echo "make setup-artifact-registry     # Artifact Registryリポジトリを作成（初回のみ）"
 	@echo "make setup-wif GITHUB_REPO=org/repo  # Workload Identity FederationとデプロイSAを作成（初回のみ）"
-	@echo "make build                       # Cloud BuildでコンテナイメージをビルドしてArtifact Registryへpush"
+	@echo "make build                       # Dockerでコンテナイメージをローカルビルドし、Artifact Registryへpush"
 	@echo "make deploy                      # Cloud Runへデプロイ"
 	@echo "make release                     # build + deploy をまとめて実行"
 
@@ -80,11 +80,9 @@ setup-wif:
 	@echo "  GCP_SERVICE_ACCOUNT            = $(DEPLOY_SA_EMAIL)"
 
 build:
-	gcloud builds submit \
-		--project=$(PROJECT_ID) \
-		--tag=$(IMAGE) \
-		--suppress-logs \
-		.
+	docker build -t $(IMAGE) .
+	gcloud auth configure-docker $(REGION)-docker.pkg.dev --project=$(PROJECT_ID) --quiet
+	docker push $(IMAGE)
 
 deploy:
 	gcloud run deploy $(SERVICE_NAME) \
