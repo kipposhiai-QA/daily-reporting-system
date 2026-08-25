@@ -4,12 +4,26 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
+# `prisma generate` (needed by prisma/schema.prisma) reads these before npm ci's postinstall runs.
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+# postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts, but
+# generate only reads the schema and never connects to the DB, so a dummy value is fine.
+ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+ENV DATABASE_URL=$DATABASE_URL
 RUN npm ci
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Generated client from the deps stage takes precedence over any stale local ./generated
+# that might otherwise be picked up by `COPY . .` outside a clean CI checkout.
+COPY --from=deps /app/generated ./generated
+# `next build` evaluates lib/prisma.ts at module load (adapter construction), so keep
+# DATABASE_URL set here too even though no query actually runs during the build.
+ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
+ENV DATABASE_URL=$DATABASE_URL
 RUN npm run build
 
 FROM base AS runner
