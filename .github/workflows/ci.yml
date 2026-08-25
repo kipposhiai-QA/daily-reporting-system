@@ -9,6 +9,10 @@ on:
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
+    env:
+      # postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts,
+      # but generate only reads the schema and never connects to the DB, so a dummy value is fine.
+      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
     steps:
       - uses: actions/checkout@v4
 
