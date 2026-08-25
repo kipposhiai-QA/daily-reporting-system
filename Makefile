@@ -83,6 +83,7 @@ build:
 	gcloud builds submit \
 		--project=$(PROJECT_ID) \
 		--tag=$(IMAGE) \
+		--suppress-logs \
 		.
 
 deploy:
