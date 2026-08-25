@@ -36,6 +36,12 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
    npm run db:migrate
    ```
 4. `prisma/schema.prisma` を変更した場合は、`npm run db:migrate` で新しいマイグレーションを作成する。
+5. 開発・テスト用の共通シードデータを投入する（`docs/test-specification.md` 2.2 参照）。
+   ```bash
+   npm run db:seed
+   ```
+   `prisma/seed.ts` は実行のたびに対象テーブルをTRUNCATEしてから再投入するため、常に同じ初期状態から
+   やり直せる。**ローカル開発用・CI/テスト用のDB以外（本番相当のDB）に対しては実行しないこと。**
 
 その他のコマンド:
 
