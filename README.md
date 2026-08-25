@@ -20,6 +20,31 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## データベース (Prisma / Supabase)
+
+このプロジェクトは [Prisma ORM](https://www.prisma.io/) (v7) を使用し、Supabase (PostgreSQL) に接続する。
+
+1. `.env.example` を `.env` にコピーし、Supabaseの接続情報を設定する。
+   - `DATABASE_URL`: プーリング接続（pgbouncer, port 6543）。アプリの通常クエリで使用。
+   - `DIRECT_URL`: 直接接続（port 5432）。マイグレーション実行時に `--url` オプション経由で使用。
+2. Prisma Client を生成する（`npm install` 時に `postinstall` で自動実行される）。
+   ```bash
+   npm run db:generate
+   ```
+3. マイグレーションを実行し、スキーマをDBへ反映する。
+   ```bash
+   npm run db:migrate
+   ```
+4. `prisma/schema.prisma` を変更した場合は、`npm run db:migrate` で新しいマイグレーションを作成する。
+
+その他のコマンド:
+
+```bash
+npm run db:migrate:deploy  # 本番/CI向け: 既存マイグレーションの適用のみ（新規作成しない）
+npm run db:push            # マイグレーション履歴を作らずスキーマを直接反映（プロトタイピング用）
+npm run db:studio          # Prisma Studio (DBのGUIビューア) を起動
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
