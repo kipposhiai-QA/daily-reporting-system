@@ -12,6 +12,12 @@ DEPLOY_SA_NAME ?= github-actions-deployer
 DEPLOY_SA_EMAIL := $(DEPLOY_SA_NAME)@$(PROJECT_ID).iam.gserviceaccount.com
 GITHUB_REPO ?= # 例: your-org/daily-reporting-system
 
+# DATABASE_URL / DIRECT_URL は機密情報のためMakefileにデフォルト値を書かない。
+# `deploy` はこの2つを環境変数として読み取り、Cloud Runの環境変数にそのまま渡す
+# （詳細は docs/deployment.md の「Supabase接続情報の管理方式」を参照）。
+# - ローカル実行時: `set -a; source .env; set +a` 等で事前に環境変数として読み込んでおく
+# - CI実行時: .github/workflows/ci.yml の deploy ジョブがGitHub Secretsから渡す
+
 .PHONY: help gcloud-auth setup-apis setup-artifact-registry setup-wif build deploy release
 
 help:
@@ -19,7 +25,7 @@ help:
 	@echo "make setup-artifact-registry     # Artifact Registryリポジトリを作成（初回のみ）"
 	@echo "make setup-wif GITHUB_REPO=org/repo  # Workload Identity FederationとデプロイSAを作成（初回のみ）"
 	@echo "make build                       # Dockerでコンテナイメージをローカルビルドし、Artifact Registryへpush"
-	@echo "make deploy                      # Cloud Runへデプロイ"
+	@echo "make deploy                      # Cloud Runへデプロイ（事前にDATABASE_URL/DIRECT_URLを環境変数として読み込んでおくこと）"
 	@echo "make release                     # build + deploy をまとめて実行"
 
 gcloud-auth:
@@ -85,12 +91,23 @@ build:
 	docker push $(IMAGE)
 
 deploy:
+	@if [ -z "$(DATABASE_URL)" ]; then \
+		echo "DATABASE_URL が設定されていません。ローカルなら .env を読み込む（例: set -a; source .env; set +a）か、"; \
+		echo "CIならGitHub Secretsの DATABASE_URL を確認してください。"; \
+		exit 1; \
+	fi
+	@if [ -z "$(DIRECT_URL)" ]; then \
+		echo "DIRECT_URL が設定されていません。ローカルなら .env を読み込む（例: set -a; source .env; set +a）か、"; \
+		echo "CIならGitHub Secretsの DIRECT_URL を確認してください。"; \
+		exit 1; \
+	fi
 	gcloud run deploy $(SERVICE_NAME) \
 		--project=$(PROJECT_ID) \
 		--region=$(REGION) \
 		--image=$(IMAGE) \
 		--platform=managed \
 		--allow-unauthenticated \
+		--set-env-vars="^|^DATABASE_URL=$(DATABASE_URL)|DIRECT_URL=$(DIRECT_URL)" \
 		--quiet
 
 release: build deploy
