@@ -9,3 +9,20 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom doesn't implement the Pointer Events methods Radix UI's interactive components
+// (Select, DropdownMenu, Dialog, ...) call during pointer-driven open/close/scroll handling.
+// Without these no-op polyfills, userEvent.click() on a Radix trigger throws
+// "target.hasPointerCapture is not a function" inside jsdom.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
