@@ -44,6 +44,9 @@ next-env.d.ts
 # prisma generated client
 /generated/prisma
 
+# generated OpenAPI document (npm run openapi:generate)
+/openapi.json
+
 # AI agent reference skills installed by `prisma init` (not part of this project)
 /.agents/
 /.windsurf/
