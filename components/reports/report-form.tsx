@@ -1,0 +1,324 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { ApiClientError, apiClient } from "@/lib/api-client";
+import type { CustomerResponse } from "@/lib/api/schemas/customer";
+import type { ReportBody, ReportDetailResponse } from "@/lib/api/schemas/report";
+import { useCurrentUser } from "@/lib/current-user-context";
+
+interface VisitRow {
+  key: number;
+  customerId: string;
+  visitContent: string;
+  visitTime: string;
+}
+
+function emptyRow(key: number): VisitRow {
+  return { key, customerId: "", visitContent: "", visitTime: "" };
+}
+
+function getTodayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+interface BuildVisitRecordsResult {
+  records: ReportBody["visit_records"];
+  errors: string[];
+}
+
+/** 完全に空の行は無視し、片方だけ入力された行はエラーとして報告する。 */
+function buildVisitRecords(rows: VisitRow[]): BuildVisitRecordsResult {
+  const records: ReportBody["visit_records"] = [];
+  const errors: string[] = [];
+
+  rows.forEach((row, index) => {
+    const hasCustomer = row.customerId !== "";
+    const hasContent = row.visitContent.trim() !== "";
+    if (!hasCustomer && !hasContent) return;
+    if (!hasCustomer || !hasContent) {
+      errors.push(`訪問記録${index + 1}行目: 顧客と訪問内容の両方を入力してください`);
+      return;
+    }
+    records.push({
+      customer_id: Number(row.customerId),
+      visit_content: row.visitContent.trim(),
+      ...(row.visitTime ? { visit_time: row.visitTime } : {}),
+    });
+  });
+
+  return { records, errors };
+}
+
+type ReportFormProps =
+  { mode: "create"; reportId?: undefined } | { mode: "edit"; reportId: string };
+
+export function ReportForm(props: ReportFormProps) {
+  const router = useRouter();
+  const { isLoading: isUserLoading, currentUser } = useCurrentUser();
+
+  const [customers, setCustomers] = useState<CustomerResponse[]>([]);
+  const [reportDate, setReportDate] = useState(getTodayDateString());
+  const [problem, setProblem] = useState("");
+  const [plan, setPlan] = useState("");
+  const [visitRows, setVisitRows] = useState<VisitRow[]>([]);
+  const nextRowKey = useRef(0);
+
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isUserLoading || !currentUser) return;
+
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const customerList = await apiClient.get<CustomerResponse[]>("/customers");
+        if (cancelled) return;
+        setCustomers(customerList);
+
+        if (props.mode === "edit") {
+          const report = await apiClient.get<ReportDetailResponse>(`/reports/${props.reportId}`);
+          if (cancelled) return;
+
+          if (report.sales_person_id !== currentUser!.sales_person_id) {
+            setInitError("この日報を編集する権限がありません");
+            return;
+          }
+
+          setReportDate(report.report_date);
+          setProblem(report.problem ?? "");
+          setPlan(report.plan ?? "");
+          setVisitRows(
+            report.visit_records.map((visit) => ({
+              key: nextRowKey.current++,
+              customerId: String(visit.customer_id),
+              visitContent: visit.visit_content,
+              visitTime: visit.visit_time ?? "",
+            })),
+          );
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiClientError && (error.status === 403 || error.status === 404)) {
+          setInitError(
+            error.status === 404
+              ? "指定された日報が見つかりません"
+              : "この日報を編集する権限がありません",
+          );
+        } else {
+          setInitError("データの取得に失敗しました");
+        }
+      } finally {
+        if (!cancelled) setIsInitializing(false);
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUserLoading, currentUser]);
+
+  function addRow() {
+    setVisitRows((rows) => [...rows, emptyRow(nextRowKey.current++)]);
+  }
+
+  function removeRow(key: number) {
+    setVisitRows((rows) => rows.filter((row) => row.key !== key));
+  }
+
+  function updateRow(key: number, patch: Partial<Omit<VisitRow, "key">>) {
+    setVisitRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+
+  async function handleSubmit(status: "DRAFT" | "SUBMITTED") {
+    setFormError(null);
+
+    if (!reportDate) {
+      setFormError("対象日を入力してください");
+      return;
+    }
+
+    const { records, errors } = buildVisitRecords(visitRows);
+    if (errors.length > 0) {
+      setFormError(errors.join(" / "));
+      return;
+    }
+    if (status === "SUBMITTED" && records.length === 0) {
+      setFormError("提出するには訪問記録を1件以上入力してください");
+      return;
+    }
+
+    const body: ReportBody = {
+      report_date: reportDate,
+      status,
+      problem: problem.trim() || null,
+      plan: plan.trim() || null,
+      visit_records: records,
+    };
+
+    setIsSubmitting(true);
+    try {
+      if (props.mode === "create") {
+        await apiClient.post<ReportDetailResponse>("/reports", body);
+        router.push("/reports");
+      } else {
+        const updated = await apiClient.put<ReportDetailResponse>(
+          `/reports/${props.reportId}`,
+          body,
+        );
+        router.push(`/reports/${updated.report_id}`);
+      }
+    } catch (error) {
+      setFormError(error instanceof ApiClientError ? error.message : "保存に失敗しました");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (isUserLoading || isInitializing) {
+    return (
+      <div className="text-muted-foreground flex flex-1 items-center justify-center p-8">
+        読み込み中...
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+        <p className="text-destructive">{initError}</p>
+        <Button asChild variant="outline">
+          <Link href="/reports">日報一覧へ戻る</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6 p-4">
+      <h1 className="text-xl font-semibold">日報作成・編集</h1>
+
+      <Field className="max-w-xs">
+        <FieldLabel htmlFor="report-date">対象日</FieldLabel>
+        <Input
+          id="report-date"
+          type="date"
+          required
+          value={reportDate}
+          onChange={(event) => setReportDate(event.target.value)}
+        />
+      </Field>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium">訪問記録</span>
+
+        {visitRows.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-[1fr_2fr_140px_40px] gap-2 text-sm font-medium">
+              <span>顧客</span>
+              <span>訪問内容</span>
+              <span>訪問時刻</span>
+              <span />
+            </div>
+            {visitRows.map((row) => (
+              <div key={row.key} className="grid grid-cols-[1fr_2fr_140px_40px] items-start gap-2">
+                <Select
+                  value={row.customerId}
+                  onValueChange={(value) => updateRow(row.key, { customerId: value })}
+                >
+                  <SelectTrigger aria-label={`訪問記録の顧客`} className="w-full">
+                    <SelectValue placeholder="顧客を選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.customer_id} value={String(customer.customer_id)}>
+                        {customer.company_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Textarea
+                  aria-label="訪問内容"
+                  rows={1}
+                  value={row.visitContent}
+                  onChange={(event) => updateRow(row.key, { visitContent: event.target.value })}
+                />
+                <Input
+                  type="time"
+                  aria-label="訪問時刻"
+                  value={row.visitTime}
+                  onChange={(event) => updateRow(row.key, { visitTime: event.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="この訪問記録を削除"
+                  onClick={() => removeRow(row.key)}
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Button type="button" variant="outline" className="w-fit" onClick={addRow}>
+          ＋訪問記録を追加
+        </Button>
+      </div>
+
+      <Field>
+        <FieldLabel htmlFor="report-problem">Problem（課題・相談）</FieldLabel>
+        <Textarea
+          id="report-problem"
+          value={problem}
+          onChange={(event) => setProblem(event.target.value)}
+        />
+      </Field>
+
+      <Field>
+        <FieldLabel htmlFor="report-plan">Plan（明日やること）</FieldLabel>
+        <Textarea id="report-plan" value={plan} onChange={(event) => setPlan(event.target.value)} />
+      </Field>
+
+      {formError && <p className="text-destructive text-sm">{formError}</p>}
+
+      <div className="flex justify-end gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isSubmitting}
+          onClick={() => handleSubmit("DRAFT")}
+        >
+          下書き保存
+        </Button>
+        <Button type="button" disabled={isSubmitting} onClick={() => handleSubmit("SUBMITTED")}>
+          提出する
+        </Button>
+      </div>
+    </div>
+  );
+}
