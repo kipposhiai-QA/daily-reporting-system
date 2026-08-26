@@ -5,8 +5,11 @@
 import { writeFileSync } from "node:fs";
 import { OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
 import { registry } from "../lib/api/openapi";
+import { registerAllOpenApiPaths } from "./register-openapi-paths";
 
-function main() {
+async function main() {
+  await registerAllOpenApiPaths();
+
   const generator = new OpenApiGeneratorV3(registry.definitions);
 
   const document = generator.generateDocument({

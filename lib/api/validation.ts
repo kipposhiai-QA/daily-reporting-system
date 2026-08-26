@@ -48,3 +48,12 @@ export function parseSearchParams<Schema extends z.ZodType>(
 ): z.infer<Schema> {
   return parseWithSchema(schema, Object.fromEntries(searchParams.entries()));
 }
+
+/** 動的ルートの `:id` を数値に変換する。整数として解釈できない場合は 404 NOT_FOUND とする。 */
+export function parseIdParam(value: string): number {
+  const id = Number(value);
+  if (!Number.isInteger(id)) {
+    throw new ApiError("NOT_FOUND", "指定されたIDが見つかりません");
+  }
+  return id;
+}

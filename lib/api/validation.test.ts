@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ApiError } from "./errors";
-import { parseJsonBody, parseSearchParams, parseWithSchema } from "./validation";
+import { parseIdParam, parseJsonBody, parseSearchParams, parseWithSchema } from "./validation";
 
 const bodySchema = z.object({
   name: z.string().min(1),
@@ -57,5 +57,25 @@ describe("parseSearchParams", () => {
     const params = new URLSearchParams({ company_name: "A社" });
 
     expect(parseSearchParams(params, schema)).toEqual({ company_name: "A社" });
+  });
+});
+
+describe("parseIdParam", () => {
+  it("returns the parsed integer for a numeric id", () => {
+    expect(parseIdParam("10")).toBe(10);
+  });
+
+  it("throws a NOT_FOUND ApiError for a non-numeric id", () => {
+    try {
+      parseIdParam("abc");
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).code).toBe("NOT_FOUND");
+    }
+  });
+
+  it("throws a NOT_FOUND ApiError for a non-integer id", () => {
+    expect(() => parseIdParam("1.5")).toThrow(ApiError);
   });
 });
