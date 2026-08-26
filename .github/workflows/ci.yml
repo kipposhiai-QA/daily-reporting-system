@@ -51,3 +51,8 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
 
       - run: make release
+        env:
+          # Cloud Runの環境変数として渡すSupabase接続情報。Makefileにはハードコードせず、
+          # GitHub Secretsから読み込む（docs/deployment.md参照）。
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}

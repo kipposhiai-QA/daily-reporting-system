@@ -16,8 +16,26 @@
   - `main` への `push` 時のみ、`docker build`/`docker push` でイメージをビルド・配置し Cloud Run へデプロイ
 - GCP認証: Workload Identity Federation（サービスアカウントキーを保存しない、キーレス認証）
 - Cloud Runのアクセス設定: 現時点では `--allow-unauthenticated`（公開）。アプリ側に認証を実装した際に見直すこと。
+- DB接続情報（Supabase）: Cloud Runの環境変数として `--set-env-vars` で渡す。詳細は「Supabase接続情報の管理方式」を参照。
 
 デプロイの実コマンドはすべて `Makefile` に集約されている。CI・ローカルどちらからも同じ `make` コマンドを使う。
+
+## Supabase接続情報の管理方式
+
+`DATABASE_URL` / `DIRECT_URL`（`.env.example` 参照）は、Cloud Runの環境変数として `gcloud run deploy --set-env-vars` で渡す方式を採用する。Secret Manager方式（シークレットを作成し `--set-secrets` で参照する）ではなく、この方式を選んだ理由は以下の通り。
+
+- 本プロジェクトは既に `GCP_WORKLOAD_IDENTITY_PROVIDER` / `GCP_SERVICE_ACCOUNT` をGitHub Secretsで管理しており、DB接続情報も同じ経路（GitHub Secrets → CIの環境変数 → Cloud Runの環境変数）に載せる方が運用が一本化される。
+- 管理する値が2つのみで、Secret Manager APIの有効化・シークレット作成・Cloud Runランタイムサービスアカウントへの`roles/secretmanager.secretAccessor`付与といった追加のセットアップ手順に見合うメリットが小さい。
+- Cloud Runの環境変数はプロジェクトのIAM権限を持つ者にしか見えない（`--allow-unauthenticated`は外部からのHTTPリクエストを許可するだけで、サービス設定の閲覧権限とは別軸）。
+
+将来的に規制対応やシークレットローテーション、監査ログ等が必要になった場合は、Secret Manager方式への移行を検討する（「今後の検討事項」参照）。
+
+**Makefileにはこれらの値をハードコードしない。** `make deploy` / `make release` は環境変数 `DATABASE_URL` / `DIRECT_URL` が設定されていることを前提とし、未設定の場合はエラーで停止する。
+
+- ローカル実行時: `.env` を読み込んでから実行する（例: `set -a; source .env; set +a; make release`）。
+- CI実行時: `.github/workflows/ci.yml` の `deploy` ジョブが、GitHub Secretsの `DATABASE_URL` / `DIRECT_URL` を `make release` 実行時の環境変数として渡す。事前にGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録しておくこと（初回セットアップの手順5を参照）。
+
+`--set-env-vars` の値はカンマ区切りのため、接続文字列にカンマを含めることはできない（Supabaseの接続文字列は通常含まない）。Makefile側ではカンマの代わりに `|` を区切り文字とするカスタムデリミタ構文（`^|^KEY1=VAL1|KEY2=VAL2`）を使っている。
 
 ## 初回セットアップ（1度だけ実行）
 
@@ -43,11 +61,21 @@ make setup-wif PROJECT_ID=daily-reporting-system-2026 GITHUB_REPO=<org>/<repo>
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`
 - `GCP_SERVICE_ACCOUNT`
 
-これらをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
+さらに、Cloud Runへ渡すDB接続情報として以下の2つも登録する（値は `.env` の同名の変数と同じ。Supabaseダッシュボード > Project Settings > Database > Connection string から取得）。
+
+- `DATABASE_URL`
+- `DIRECT_URL`
+
+これら4つをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
 
 ## ローカルから手動デプロイする場合
 
+`make deploy` / `make release` はCloud Runに渡す `DATABASE_URL` / `DIRECT_URL` を環境変数として要求するため、先に `.env` を読み込んでおく。
+
 ```bash
+# .env を環境変数として読み込む
+set -a; source .env; set +a
+
 # ビルド + デプロイをまとめて実行
 make release PROJECT_ID=daily-reporting-system-2026 REGION=asia-northeast1
 
@@ -62,7 +90,7 @@ make deploy PROJECT_ID=daily-reporting-system-2026 REGION=asia-northeast1
 
 - アプリに認証を実装した段階で、Cloud Runのアクセス設定（`--allow-unauthenticated`）を見直す（IAM認証 + Identity-Aware Proxy、または独自認証+公開の組み合わせなど）。
 - ステージング環境が必要になった場合、`SERVICE_NAME` を分けて（例: `daily-reporting-system-staging`）別サービスとしてデプロイする運用を検討する。
-- Supabase（DB）の接続情報は、Cloud Runの環境変数 or Secret Managerで管理する（本書はアプリ本体未実装のため未定義。実装時に追記する）。
+- Supabase（DB）の接続情報は現在Cloud Runの環境変数（`--set-env-vars`、GitHub Secrets経由）で管理している（「Supabase接続情報の管理方式」参照）。シークレットローテーションや監査ログ等の要件が出てきた場合はSecret Manager方式への移行を検討する。
 - Cloud Buildを使わない構成に変更したため、`make setup-apis` の `cloudbuild.googleapis.com` 有効化、および
   `make setup-wif` が付与する `roles/cloudbuild.builds.editor` はビルド用途としては不要になった
   （既存環境から外すかは運用上の影響を確認の上で判断する）。
