@@ -1,10 +1,9 @@
 // OpenAPIドキュメント生成の土台
 // 参照: docs/api-specification.md（APIスキーマ定義はZodスキーマから生成する）
 // 各エンドポイントのスキーマ定義（#5〜#8）は、この registry に registerPath していく想定。
-import { extendZodWithOpenApi, OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
+import { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
-
-extendZodWithOpenApi(z);
+import "./zod-openapi-setup";
 
 export const registry = new OpenAPIRegistry();
 

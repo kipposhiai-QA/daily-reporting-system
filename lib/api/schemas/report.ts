@@ -1,13 +1,15 @@
 // 日報APIのZodスキーマ・レスポンス変換
 // 参照: docs/api-specification.md 5. 日報 API
 import { z } from "zod";
-import type { ReportStatus } from "@/generated/prisma/client";
+import { Prisma, type ReportStatus } from "@/generated/prisma/client";
 import {
   dateOnlySchema,
   formatDateOnly,
   formatDateTimeJst,
   formatTimeOnly,
+  timeOnlySchema,
 } from "@/lib/api/datetime";
+import { ApiError } from "@/lib/api/errors";
 import { registry } from "@/lib/api/openapi";
 
 const reportStatusSchema = z.enum(["DRAFT", "SUBMITTED"]).openapi("ReportStatus");
@@ -129,6 +131,72 @@ type ReportDetailInput = {
     created_at: Date;
   }[];
 };
+
+/** GET /api/reports/:id・POST・PUTで共通して使う include 形状。toReportDetailResponse の入力と対応する。 */
+export const reportDetailInclude = {
+  sales_person: { select: { name: true } },
+  visit_records: {
+    include: { customer: { select: { company_name: true } } },
+    orderBy: { visit_time: "asc" },
+  },
+  comments: {
+    include: { manager: { select: { name: true } } },
+    orderBy: { created_at: "asc" },
+  },
+} as const;
+
+const visitRecordBodySchema = z.object({
+  customer_id: z.number().int().openapi({ example: 1 }),
+  visit_content: z.string().min(1, "訪問内容は必須です").openapi({ example: "新商品の提案を実施" }),
+  visit_time: timeOnlySchema.optional().openapi({ example: "10:00" }),
+});
+
+/**
+ * POST/PUT 共通のリクエストボディ。docs/api-specification.md 5.3 のバリデーション表に対応する。
+ * status=SUBMITTEDの場合はvisit_recordsが1件以上必須（superRefineで検証）。
+ */
+export const reportBodySchema = registry.register(
+  "ReportBody",
+  z
+    .object({
+      report_date: dateOnlySchema.openapi({ example: "2026-08-25" }),
+      status: reportStatusSchema,
+      problem: z
+        .string()
+        .nullable()
+        .optional()
+        .openapi({ example: "A社の見積もり承認が遅れている" }),
+      plan: z.string().nullable().optional().openapi({ example: "C社へ初回訪問予定" }),
+      visit_records: z.array(visitRecordBodySchema),
+    })
+    .superRefine((data, ctx) => {
+      if (data.status === "SUBMITTED" && data.visit_records.length === 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["visit_records"],
+          message: "提出する場合は訪問記録を1件以上入力してください",
+        });
+      }
+    }),
+);
+
+export type ReportBody = z.infer<typeof reportBodySchema>;
+
+/**
+ * 日報作成・更新で発生しうるPrismaの制約違反エラーを共通エラー形式に変換して投げ直す。
+ * P2002: (sales_person_id, report_date) の一意制約違反 / P2025: 対象レコード無し。
+ */
+export function mapReportPrismaError(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      throw new ApiError("CONFLICT", "同じ営業担当者・対象日の日報が既に存在します");
+    }
+    if (error.code === "P2025") {
+      throw new ApiError("NOT_FOUND", "指定された日報が見つかりません");
+    }
+  }
+  throw error;
+}
 
 export function toReportDetailResponse(report: ReportDetailInput): ReportDetailResponse {
   return {

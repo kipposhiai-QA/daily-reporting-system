@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@/generated/prisma/client";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -8,15 +9,17 @@ vi.mock("@/lib/prisma", () => ({
     },
     dailyReport: {
       findUnique: vi.fn(),
+      update: vi.fn(),
     },
   },
 }));
 
 import { prisma } from "@/lib/prisma";
-import { GET } from "./route";
+import { GET, PUT } from "./route";
 
 const findUniqueSalesPersonMock = vi.mocked(prisma.salesPerson.findUnique);
 const findUniqueReportMock = vi.mocked(prisma.dailyReport.findUnique);
+const updateMock = vi.mocked(prisma.dailyReport.update);
 
 const YAMADA = {
   sales_person_id: 1,
@@ -76,6 +79,7 @@ function buildReport(overrides: Partial<Record<string, unknown>> = {}) {
 beforeEach(() => {
   findUniqueSalesPersonMock.mockReset();
   findUniqueReportMock.mockReset();
+  updateMock.mockReset();
 });
 
 function withAuthHeader(headers: Record<string, string> = {}): Record<string, string> {
@@ -84,6 +88,14 @@ function withAuthHeader(headers: Record<string, string> = {}): Record<string, st
 
 function makeRequest(headers?: Record<string, string>): NextRequest {
   return new NextRequest("http://localhost/api/reports/10", {
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+function putRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+  return new NextRequest("http://localhost/api/reports/10", {
+    method: "PUT",
+    body: JSON.stringify(body),
     headers: { "content-type": "application/json", ...headers },
   });
 }
@@ -190,5 +202,143 @@ describe("GET /api/reports/:id", () => {
         }),
       }),
     );
+  });
+});
+
+describe("PUT /api/reports/:id", () => {
+  it("returns 401 when the auth header is missing", async () => {
+    const response = await PUT(
+      putRequest({ report_date: "2026-08-25", status: "DRAFT", visit_records: [] }),
+      ctx("10"),
+    );
+    expect(response.status).toBe(401);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the report does not exist", async () => {
+    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue(null as never);
+
+    const response = await PUT(
+      putRequest(
+        { report_date: "2026-08-25", status: "DRAFT", visit_records: [] },
+        withAuthHeader(),
+      ),
+      ctx("999"),
+    );
+
+    expect(response.status).toBe(404);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when the caller is not the report's creator", async () => {
+    findUniqueSalesPersonMock.mockResolvedValue(TANAKA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+
+    const response = await PUT(
+      putRequest(
+        { report_date: "2026-08-25", status: "DRAFT", visit_records: [] },
+        withAuthHeader({ "X-Sales-Person-Id": "2" }),
+      ),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(403);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when SUBMITTED has no visit_records", async () => {
+    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+
+    const response = await PUT(
+      putRequest(
+        { report_date: "2026-08-25", status: "SUBMITTED", visit_records: [] },
+        withAuthHeader(),
+      ),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the changed report_date collides with another of the caller's reports", async () => {
+    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+    updateMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "7.9.1",
+      }),
+    );
+
+    const response = await PUT(
+      putRequest(
+        {
+          report_date: "2026-08-24",
+          status: "SUBMITTED",
+          visit_records: [{ customer_id: 1, visit_content: "訪問" }],
+        },
+        withAuthHeader(),
+      ),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(409);
+  });
+
+  it("replaces visit_records wholesale (delete all, then create the new set)", async () => {
+    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+    updateMock.mockResolvedValue(
+      buildReport({
+        visit_records: [
+          {
+            visit_id: 101,
+            customer_id: 1,
+            customer: { company_name: "株式会社A社" },
+            visit_content: "新商品の提案を実施",
+            visit_time: new Date("1970-01-01T10:00:00.000Z"),
+            created_at: new Date("2026-08-25T09:00:00.000Z"),
+          },
+        ],
+      }) as never,
+    );
+
+    const response = await PUT(
+      putRequest(
+        {
+          report_date: "2026-08-25",
+          status: "SUBMITTED",
+          visit_records: [
+            { customer_id: 1, visit_content: "新商品の提案を実施", visit_time: "10:00" },
+          ],
+        },
+        withAuthHeader(),
+      ),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { report_id: 10 },
+        data: expect.objectContaining({
+          visit_records: {
+            deleteMany: {},
+            create: [
+              {
+                customer_id: 1,
+                visit_content: "新商品の提案を実施",
+                visit_time: new Date("1970-01-01T10:00:00.000Z"),
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body.visit_records).toHaveLength(1);
   });
 });
