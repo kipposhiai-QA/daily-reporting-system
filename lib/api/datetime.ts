@@ -4,6 +4,7 @@
 //   - 時刻: HH:mm（Prisma上は @db.Time、1970-01-01 のUTC時刻として保持される）
 //   - 日時: ISO8601 +09:00（例: 2026-08-25T10:00:00+09:00）
 import { z } from "zod";
+import "./zod-openapi-setup";
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_ONLY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
