@@ -13,6 +13,13 @@ jobs:
       # postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts,
       # but generate only reads the schema and never connects to the DB, so a dummy value is fine.
       DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+      # API結合テスト（app/api/**/*.integration.test.ts）専用のテストDB。本番相当のDBを
+      # 誤ってTRUNCATEしないよう、deployジョブが使うDATABASE_URL/DIRECT_URLとは別の
+      # Secretsを使う。未設定の場合は以下のステップ・結合テストともにスキップされる
+      # （セットアップ手順は docs/test-specification.md 2.1 参照）。
+      # `if:` 条件式は secrets コンテキストを直接参照できないため、一度 env を経由する。
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,20 +34,13 @@ jobs:
 
       - run: npm run format:check
 
-      # API結合テスト（app/api/**/*.integration.test.ts）専用のテストDB。本番相当のDBを
-      # 誤ってTRUNCATEしないよう、deployジョブが使うDATABASE_URL/DIRECT_URLとは別の
-      # Secretsを使う。未設定の場合はこのステップ・結合テストともにスキップされる
-      # （セットアップ手順は docs/test-specification.md 2.1 参照）。
       - name: Apply migrations to the test database
-        if: ${{ secrets.TEST_DATABASE_URL != '' }}
+        if: ${{ env.TEST_DATABASE_URL != '' }}
         run: npx prisma migrate deploy
         env:
-          DATABASE_URL: ${{ secrets.TEST_DIRECT_URL }}
+          DATABASE_URL: ${{ env.TEST_DIRECT_URL }}
 
       - run: npm run test
-        env:
-          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
 
       - run: npm run build
 
