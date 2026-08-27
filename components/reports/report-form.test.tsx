@@ -175,6 +175,31 @@ describe("ReportForm (create mode)", () => {
     expect(push).toHaveBeenCalledWith("/reports");
   });
 
+  it("submits with SUBMITTED status, making the report visible to managers (TC-SCR02-10)", async () => {
+    mockCurrentUser();
+    apiPostMock.mockResolvedValue({ ...REPORT_10, status: "SUBMITTED" });
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
+    await user.type(screen.getByLabelText("訪問内容"), "新商品の提案を実施");
+
+    await user.click(screen.getByRole("button", { name: "提出する" }));
+
+    await waitFor(() =>
+      expect(apiPostMock).toHaveBeenCalledWith(
+        "/reports",
+        expect.objectContaining({ status: "SUBMITTED" }),
+      ),
+    );
+    expect(push).toHaveBeenCalledWith("/reports");
+    // 提出済み日報が上長の一覧に表示されることは、上長スコープのAPIレスポンスをそのまま
+    // 描画する report-list 側で検証する（app/reports/page.test.tsx の TC-SCR01-03/04、
+    // および TC-API-RPT-03 相当のAPIテストで担保）。
+  });
+
   it("rejects submitting with zero visit records (TC-SCR02-05)", async () => {
     mockCurrentUser();
     const user = userEvent.setup();

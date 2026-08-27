@@ -107,7 +107,7 @@ describe("ReportListPage", () => {
     expect(apiGetMock).toHaveBeenCalledWith("/reports");
   });
 
-  it("shows the sales-person column and filter for a manager (TC-SCR01-03/04)", async () => {
+  it("shows the sales-person column and filter for a manager (TC-SCR01-03/04, TC-SCR02-10)", async () => {
     mockCurrentUser({ currentUser: SUZUKI_MANAGER, isManager: true });
     apiGetMock.mockResolvedValue([REPORT_10]);
 
