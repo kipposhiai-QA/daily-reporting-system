@@ -17,6 +17,17 @@
 - テスト用DB（本番と分離）を用いた開発環境、もしくはCI環境。
 - 各テストケース実行前に、下記2.2の前提データでDBを初期化した状態からスタートする（テストケース間の依存を避ける）。
 
+#### 2.1.1 APIテスト（結合テスト）の実行基盤
+
+`docs/api-specification.md` の各エンドポイントに対する結合テスト（4章、`app/api/**/*.integration.test.ts`）は、Vitestから実DB（PostgreSQL）に接続し、各テストケース実行前に `tests/integration/db.ts` が対象テーブルをTRUNCATEしてから2.2の共通シードデータを再投入する。
+
+- **本番相当DBとは分離した専用のテストDBを用意すること。** このプロジェクトの `DATABASE_URL`/`DIRECT_URL`（`docs/deployment.md` のCloud Runデプロイ先と同じSupabaseプロジェクト）を結合テストに転用しない。結合テストは `TEST_DATABASE_URL` / `TEST_DIRECT_URL` という別の環境変数からのみDB接続情報を読む（`vitest.config.mts` の `integration` プロジェクトが `tests/integration/setup.ts` を読み込み、これらが設定されている場合に限り `lib/prisma.ts` が読む `DATABASE_URL`/`DIRECT_URL` をこの値で上書きする）。未設定の環境では結合テストは自動的にスキップされ、他のテスト（画面テスト・APIルートの単体テスト）には影響しない。
+- **ローカルで実行する場合**: 任意のPostgreSQL（ローカルにインストールしたもの、Docker、または専用のSupabaseプロジェクトなど）を用意し、`TEST_DATABASE_URL`/`TEST_DIRECT_URL` を `.env` に追記した上で、`DATABASE_URL="$TEST_DIRECT_URL" npx prisma migrate deploy` でスキーマを適用してから `npm run test` を実行する。
+- **CIで実行する場合**（初回のみ）:
+  1. 本番デプロイ用とは別に、Supabase（もしくは他のPostgreSQLホスティング）でCI専用のプロジェクト/データベースを新規作成する。
+  2. その接続情報を GitHub リポジトリの **Settings → Secrets and variables → Actions** に `TEST_DATABASE_URL`（プーリング接続）・`TEST_DIRECT_URL`（直接接続）として登録する。
+  3. `.github/workflows/ci.yml` の `lint-test-build` ジョブは、これらのSecretsが設定されていれば自動的に `prisma migrate deploy` でスキーマを適用し、`npm run test` に結合テスト用の接続情報を渡す。未設定の間はこのステップ・結合テストともにスキップされ、CIの他の工程（lint・画面テスト・APIルート単体テスト・build）はそのまま実行される。
+
 ### 2.2 共通シードデータ
 
 **SALES_PERSON**

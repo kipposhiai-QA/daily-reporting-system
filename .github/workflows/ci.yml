@@ -27,7 +27,20 @@ jobs:
 
       - run: npm run format:check
 
+      # API結合テスト（app/api/**/*.integration.test.ts）専用のテストDB。本番相当のDBを
+      # 誤ってTRUNCATEしないよう、deployジョブが使うDATABASE_URL/DIRECT_URLとは別の
+      # Secretsを使う。未設定の場合はこのステップ・結合テストともにスキップされる
+      # （セットアップ手順は docs/test-specification.md 2.1 参照）。
+      - name: Apply migrations to the test database
+        if: ${{ secrets.TEST_DATABASE_URL != '' }}
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DIRECT_URL }}
+
       - run: npm run test
+        env:
+          TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
 
       - run: npm run build
 
