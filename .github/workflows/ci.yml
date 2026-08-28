@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: test-db-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
