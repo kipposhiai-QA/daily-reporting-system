@@ -67,3 +67,4 @@ export default function Home() {
     </div>
   );
 }
+// lint-staged test
