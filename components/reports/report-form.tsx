@@ -235,48 +235,61 @@ export function ReportForm(props: ReportFormProps) {
         <span className="text-sm font-medium">訪問記録</span>
 
         {visitRows.length > 0 && (
-          <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-[1fr_2fr_140px_40px] gap-2 text-sm font-medium">
+          <div className="flex flex-col gap-3 md:gap-2">
+            <div className="hidden grid-cols-[1fr_2fr_140px_40px] gap-2 text-sm font-medium md:grid">
               <span>顧客</span>
               <span>訪問内容</span>
               <span>訪問時刻</span>
               <span />
             </div>
             {visitRows.map((row) => (
-              <div key={row.key} className="grid grid-cols-[1fr_2fr_140px_40px] items-start gap-2">
-                <Select
-                  value={row.customerId}
-                  onValueChange={(value) => updateRow(row.key, { customerId: value })}
-                >
-                  <SelectTrigger aria-label={`訪問記録の顧客`} className="w-full">
-                    <SelectValue placeholder="顧客を選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((customer) => (
-                      <SelectItem key={customer.customer_id} value={String(customer.customer_id)}>
-                        {customer.company_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Textarea
-                  aria-label="訪問内容"
-                  rows={1}
-                  value={row.visitContent}
-                  onChange={(event) => updateRow(row.key, { visitContent: event.target.value })}
-                />
-                <Input
-                  type="time"
-                  aria-label="訪問時刻"
-                  value={row.visitTime}
-                  onChange={(event) => updateRow(row.key, { visitTime: event.target.value })}
-                />
+              <div
+                key={row.key}
+                className="flex flex-col gap-2 rounded-lg border p-3 md:grid md:grid-cols-[1fr_2fr_140px_40px] md:items-start md:gap-2 md:rounded-none md:border-0 md:p-0"
+              >
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium md:hidden">顧客</span>
+                  <Select
+                    value={row.customerId}
+                    onValueChange={(value) => updateRow(row.key, { customerId: value })}
+                  >
+                    <SelectTrigger aria-label={`訪問記録の顧客`} className="w-full">
+                      <SelectValue placeholder="顧客を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.customer_id} value={String(customer.customer_id)}>
+                          {customer.company_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium md:hidden">訪問内容</span>
+                  <Textarea
+                    aria-label="訪問内容"
+                    rows={1}
+                    value={row.visitContent}
+                    onChange={(event) => updateRow(row.key, { visitContent: event.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium md:hidden">訪問時刻</span>
+                  <Input
+                    type="time"
+                    aria-label="訪問時刻"
+                    value={row.visitTime}
+                    onChange={(event) => updateRow(row.key, { visitTime: event.target.value })}
+                  />
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   aria-label="この訪問記録を削除"
                   onClick={() => removeRow(row.key)}
+                  className="self-end md:self-start"
                 >
                   ×
                 </Button>
