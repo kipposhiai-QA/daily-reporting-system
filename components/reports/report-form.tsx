@@ -393,7 +393,11 @@ export function ReportForm(props: ReportFormProps) {
         <Textarea id="report-plan" value={plan} onChange={(event) => setPlan(event.target.value)} />
       </Field>
 
-      {formError && <p className="text-destructive text-sm">{formError}</p>}
+      {formError && (
+        <p className="text-destructive text-sm" role="alert">
+          {formError}
+        </p>
+      )}
 
       <div className="flex justify-end gap-3">
         <Button

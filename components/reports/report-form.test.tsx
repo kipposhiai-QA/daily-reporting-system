@@ -308,6 +308,52 @@ describe("ReportForm (edit mode)", () => {
   });
 });
 
+describe("ReportForm (validation error accessibility, issue #50)", () => {
+  it("exposes the incomplete-row validation error via role=alert (TC-SCR02-03相当)", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
+
+    await user.click(screen.getByRole("button", { name: "提出する" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("顧客と訪問内容の両方を入力してください");
+  });
+
+  it("exposes the zero-visit-record submission error via role=alert (TC-SCR02-05相当)", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "提出する" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("提出するには訪問記録を1件以上入力してください");
+  });
+
+  it("exposes the API conflict error via role=alert (TC-SCR02-06相当)", async () => {
+    mockCurrentUser();
+    const { ApiClientError } =
+      await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+    apiPostMock.mockRejectedValue(
+      new ApiClientError(409, {
+        error: { code: "CONFLICT", message: "同じ営業担当者・対象日の日報が既に存在します" },
+      }),
+    );
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "下書き保存" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("同じ営業担当者・対象日の日報が既に存在します");
+  });
+});
+
 describe("ReportForm (user switch with unsaved changes, issue #48)", () => {
   beforeEach(() => {
     apiGetMock.mockImplementation(async (path: string) => {
