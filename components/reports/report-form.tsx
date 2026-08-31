@@ -301,7 +301,7 @@ export function ReportForm(props: ReportFormProps) {
         <Input
           id="report-date"
           type="date"
-          required
+          aria-required="true"
           value={reportDate}
           onChange={(event) => setReportDate(event.target.value)}
         />
