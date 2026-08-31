@@ -69,9 +69,31 @@ function buildVisitRecords(rows: VisitRow[]): BuildVisitRecordsResult {
 type ReportFormProps =
   { mode: "create"; reportId?: undefined } | { mode: "edit"; reportId: string };
 
+const UNSAVED_CHANGES_CONFIRM_MESSAGE =
+  "保存されていない変更があります。ユーザーを切り替えると入力内容は破棄されます。切り替えますか？";
+
+interface FormSnapshot {
+  reportDate: string;
+  problem: string;
+  plan: string;
+  visitRows: VisitRow[];
+}
+
+function isSameVisitRows(a: VisitRow[], b: VisitRow[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((row, index) => {
+    const other = b[index];
+    return (
+      row.customerId === other.customerId &&
+      row.visitContent === other.visitContent &&
+      row.visitTime === other.visitTime
+    );
+  });
+}
+
 export function ReportForm(props: ReportFormProps) {
   const router = useRouter();
-  const { isLoading: isUserLoading, currentUser } = useCurrentUser();
+  const { isLoading: isUserLoading, currentUser, selectSalesPersonId } = useCurrentUser();
 
   const [customers, setCustomers] = useState<CustomerResponse[]>([]);
   const [reportDate, setReportDate] = useState(getTodayDateString());
@@ -85,8 +107,55 @@ export function ReportForm(props: ReportFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 直近に読み込んだ（＝未編集とみなす）内容のスナップショット。
+  // 初期値はマウント時点のデフォルト値（新規作成時の空フォーム相当）。
+  const loadedSnapshotRef = useRef<FormSnapshot>({
+    reportDate,
+    problem,
+    plan,
+    visitRows,
+  });
+  const prevSalesPersonIdRef = useRef<number | null>(null);
+  const skipNextLoadRef = useRef(false);
+
+  function hasUnsavedChanges(): boolean {
+    const snapshot = loadedSnapshotRef.current;
+    return (
+      reportDate !== snapshot.reportDate ||
+      problem !== snapshot.problem ||
+      plan !== snapshot.plan ||
+      !isSameVisitRows(visitRows, snapshot.visitRows)
+    );
+  }
+
   useEffect(() => {
     if (isUserLoading || !currentUser) return;
+
+    const previousSalesPersonId = prevSalesPersonIdRef.current;
+    const isUserSwitch =
+      previousSalesPersonId !== null && previousSalesPersonId !== currentUser.sales_person_id;
+    // 編集画面のみ、切替に伴う再読み込みで入力中の内容が上書き・破棄されうる
+    // （新規作成画面は切替時にフォーム内容を書き換えないため対象外）。
+    const wouldDiscardChanges = isUserSwitch && props.mode === "edit" && hasUnsavedChanges();
+
+    if (wouldDiscardChanges) {
+      const confirmed = window.confirm(UNSAVED_CHANGES_CONFIRM_MESSAGE);
+      if (!confirmed) {
+        // ユーザー切替をキャンセルし、直前のユーザーへ戻す。フォームの内容は保持したまま
+        // 再読み込みをスキップする（下のeffect再実行で入力内容が破棄されないようにする）。
+        skipNextLoadRef.current = true;
+        selectSalesPersonId(previousSalesPersonId);
+        return;
+      }
+    }
+
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      prevSalesPersonIdRef.current = currentUser.sales_person_id;
+      return;
+    }
+
+    prevSalesPersonIdRef.current = currentUser.sales_person_id;
 
     let cancelled = false;
 
@@ -105,17 +174,24 @@ export function ReportForm(props: ReportFormProps) {
             return;
           }
 
+          const loadedVisitRows = report.visit_records.map((visit) => ({
+            key: nextRowKey.current++,
+            customerId: String(visit.customer_id),
+            visitContent: visit.visit_content,
+            visitTime: visit.visit_time ?? "",
+          }));
+
           setReportDate(report.report_date);
           setProblem(report.problem ?? "");
           setPlan(report.plan ?? "");
-          setVisitRows(
-            report.visit_records.map((visit) => ({
-              key: nextRowKey.current++,
-              customerId: String(visit.customer_id),
-              visitContent: visit.visit_content,
-              visitTime: visit.visit_time ?? "",
-            })),
-          );
+          setVisitRows(loadedVisitRows);
+
+          loadedSnapshotRef.current = {
+            reportDate: report.report_date,
+            problem: report.problem ?? "",
+            plan: report.plan ?? "",
+            visitRows: loadedVisitRows,
+          };
         }
       } catch (error) {
         if (cancelled) return;

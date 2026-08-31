@@ -307,3 +307,126 @@ describe("ReportForm (edit mode)", () => {
     expect(await screen.findByText("指定された日報が見つかりません")).toBeInTheDocument();
   });
 });
+
+describe("ReportForm (user switch with unsaved changes, issue #48)", () => {
+  beforeEach(() => {
+    apiGetMock.mockImplementation(async (path: string) => {
+      if (path === "/customers") return [COMPANY_A, COMPANY_B];
+      if (path === "/reports/10") return REPORT_10;
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  it("asks for confirmation instead of silently discarding an unsaved edit", async () => {
+    const selectSalesPersonId = vi.fn();
+    mockCurrentUser({ selectSalesPersonId });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+
+    const { rerender } = render(<ReportForm mode="edit" reportId="10" />);
+    const problemInput = await screen.findByLabelText("Problem（課題・相談）");
+    expect(problemInput).toHaveValue("A社の見積もり承認が遅れている");
+
+    await user.clear(problemInput);
+    await user.type(problemInput, "編集中の未保存メモ");
+
+    mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
+    rerender(<ReportForm mode="edit" reportId="10" />);
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // キャンセルされたので直前のユーザー(山田太郎)に戻すよう要求する
+    expect(selectSalesPersonId).toHaveBeenCalledWith(1);
+    // 入力中の内容は破棄されず残っている
+    expect(screen.getByLabelText("Problem（課題・相談）")).toHaveValue("編集中の未保存メモ");
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not discard the unsaved edit even after the reverted user is re-applied", async () => {
+    const selectSalesPersonId = vi.fn();
+    mockCurrentUser({ selectSalesPersonId });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+
+    const { rerender } = render(<ReportForm mode="edit" reportId="10" />);
+    const problemInput = await screen.findByLabelText("Problem（課題・相談）");
+    await user.clear(problemInput);
+    await user.type(problemInput, "編集中の未保存メモ");
+
+    mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
+    rerender(<ReportForm mode="edit" reportId="10" />);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+    // selectSalesPersonId(1) の呼び出しを受けて、切替元コンポーネントが currentUser を
+    // 山田太郎に戻したことを模倣する。
+    mockCurrentUser({ selectSalesPersonId });
+    rerender(<ReportForm mode="edit" reportId="10" />);
+
+    // 元のユーザーに戻った際に再読み込みが走り入力内容が上書きされていないこと
+    expect(screen.getByLabelText("Problem（課題・相談）")).toHaveValue("編集中の未保存メモ");
+    // 確認ダイアログは最初の1回のみ（差し戻し後は再読み込みされない）
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+    confirmSpy.mockRestore();
+  });
+
+  it("proceeds with the switch and reloads the report once confirmed", async () => {
+    const selectSalesPersonId = vi.fn();
+    mockCurrentUser({ selectSalesPersonId });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    const { rerender } = render(<ReportForm mode="edit" reportId="10" />);
+    const problemInput = await screen.findByLabelText("Problem（課題・相談）");
+    await user.clear(problemInput);
+    await user.type(problemInput, "編集中の未保存メモ");
+
+    mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
+    rerender(<ReportForm mode="edit" reportId="10" />);
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // 別営業の日報のため権限エラー表示に切り替わる（＝再読み込みが行われた）
+    expect(await screen.findByText("この日報を編集する権限がありません")).toBeInTheDocument();
+    expect(selectSalesPersonId).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("switches without confirmation when there are no unsaved changes", async () => {
+    const selectSalesPersonId = vi.fn();
+    mockCurrentUser({ selectSalesPersonId });
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const user = userEvent.setup();
+
+    const { rerender } = render(<ReportForm mode="edit" reportId="10" />);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+    await user.click(screen.getAllByRole("button", { name: "この訪問記録を削除" })[1]);
+
+    mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
+    rerender(<ReportForm mode="edit" reportId="10" />);
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(await screen.findByText("この日報を編集する権限がありません")).toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not prompt on user switch in create mode, where nothing is discarded", async () => {
+    const selectSalesPersonId = vi.fn();
+    mockCurrentUser({ selectSalesPersonId });
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const user = userEvent.setup();
+
+    const { rerender } = render(<ReportForm mode="create" />);
+    const problemInput = await screen.findByLabelText("Problem（課題・相談）");
+    await user.type(problemInput, "新規メモ");
+
+    mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
+    rerender(<ReportForm mode="create" />);
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(problemInput).toHaveValue("新規メモ");
+
+    confirmSpy.mockRestore();
+  });
+});
