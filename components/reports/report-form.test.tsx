@@ -476,3 +476,68 @@ describe("ReportForm (user switch with unsaved changes, issue #48)", () => {
     confirmSpy.mockRestore();
   });
 });
+
+describe("ReportForm (required field validation, issue #52)", () => {
+  it("marks the target date as required for assistive tech", async () => {
+    mockCurrentUser();
+
+    render(<ReportForm mode="create" />);
+    const dateInput = await screen.findByLabelText("対象日");
+
+    expect(dateInput).toHaveAttribute("aria-required", "true");
+  });
+
+  it("blocks a draft save when the target date is cleared and shows a role=alert error", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    const dateInput = await screen.findByLabelText("対象日");
+    await user.clear(dateInput);
+
+    await user.click(screen.getByRole("button", { name: "下書き保存" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("対象日を入力してください");
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a submission when the target date is cleared and shows a role=alert error", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    const dateInput = await screen.findByLabelText("対象日");
+    await user.clear(dateInput);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
+    await user.type(screen.getByLabelText("訪問内容"), "新商品の提案を実施");
+
+    await user.click(screen.getByRole("button", { name: "提出する" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("対象日を入力してください");
+    expect(apiPostMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks an update when the target date is cleared on an existing report", async () => {
+    mockCurrentUser();
+    apiGetMock.mockImplementation(async (path: string) => {
+      if (path === "/customers") return [COMPANY_A, COMPANY_B];
+      if (path === "/reports/10") return REPORT_10;
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="edit" reportId="10" />);
+    const dateInput = await screen.findByLabelText("対象日");
+    await user.clear(dateInput);
+
+    await user.click(screen.getByRole("button", { name: "提出する" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("対象日を入力してください");
+    expect(apiPutMock).not.toHaveBeenCalled();
+  });
+});
