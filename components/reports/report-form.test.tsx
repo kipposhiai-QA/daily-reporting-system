@@ -595,3 +595,58 @@ describe("ReportForm (row-numbered aria-labels, issue #54)", () => {
     expect(screen.getByLabelText("訪問記録2件目の顧客")).toBeInTheDocument();
   });
 });
+
+describe("ReportForm (row fieldset/legend, issue #56)", () => {
+  it("groups each row in a fieldset labeled by a legend with its row number", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    const { container } = render(<ReportForm mode="create" />);
+    const addButton = await screen.findByRole("button", { name: "＋訪問記録を追加" });
+    await user.click(addButton);
+    await user.click(addButton);
+
+    // fieldset(role="group")の名前がlegendの行番号ラベルから算出されている
+    expect(screen.getByRole("group", { name: "訪問記録1件目" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "訪問記録2件目" })).toBeInTheDocument();
+
+    const fieldsets = container.querySelectorAll("fieldset");
+    expect(fieldsets).toHaveLength(2);
+    fieldsets.forEach((fieldset, index) => {
+      const legend = fieldset.querySelector("legend");
+      expect(legend).toHaveTextContent(`訪問記録${index + 1}件目`);
+    });
+  });
+
+  it("keeps the legend visually hidden so the row layout is unaffected", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    const { container } = render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+
+    const legend = container.querySelector("legend");
+    expect(legend).toHaveClass("sr-only");
+
+    // fieldsetのデフォルト枠線・余白を打ち消し、行の見た目（カード風のスタイル）は
+    // 内側のdivがそのまま担う
+    const fieldset = container.querySelector("fieldset");
+    expect(fieldset).toHaveClass("border-0", "p-0", "m-0");
+  });
+
+  it("renumbers legends without gaps after deleting a row", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    const { container } = render(<ReportForm mode="create" />);
+    const addButton = await screen.findByRole("button", { name: "＋訪問記録を追加" });
+    await user.click(addButton);
+    await user.click(addButton);
+    await user.click(addButton);
+
+    await user.click(screen.getByRole("button", { name: "訪問記録1件目を削除" }));
+
+    const legends = Array.from(container.querySelectorAll("legend"));
+    expect(legends.map((legend) => legend.textContent)).toEqual(["訪問記録1件目", "訪問記録2件目"]);
+  });
+});
