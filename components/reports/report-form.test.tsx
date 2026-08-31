@@ -123,7 +123,10 @@ describe("ReportForm (create mode)", () => {
     await user.click(addButton);
     await user.click(addButton);
 
-    expect(screen.getAllByLabelText("訪問記録の顧客")).toHaveLength(3);
+    expect(screen.getAllByLabelText(/訪問記録\d+件目の顧客/)).toHaveLength(3);
+    expect(screen.getByLabelText("訪問記録1件目の顧客")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録2件目の顧客")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録3件目の顧客")).toBeInTheDocument();
   });
 
   it("removes a row when its delete button is clicked (TC-SCR02-02)", async () => {
@@ -135,10 +138,13 @@ describe("ReportForm (create mode)", () => {
     await user.click(addButton);
     await user.click(addButton);
 
-    const deleteButtons = screen.getAllByRole("button", { name: "この訪問記録を削除" });
+    const deleteButtons = screen.getAllByRole("button", { name: /訪問記録\d+件目を削除/ });
     await user.click(deleteButtons[0]);
 
-    expect(screen.getAllByLabelText("訪問記録の顧客")).toHaveLength(1);
+    expect(screen.getAllByLabelText(/訪問記録\d+件目の顧客/)).toHaveLength(1);
+    // 1行目を削除した残り1行は、番号がずれずに1件目として振り直される
+    expect(screen.getByLabelText("訪問記録1件目の顧客")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "訪問記録1件目を削除" })).toBeInTheDocument();
   });
 
   it("rejects submission when only the customer is selected on a row (TC-SCR02-03)", async () => {
@@ -147,7 +153,7 @@ describe("ReportForm (create mode)", () => {
 
     render(<ReportForm mode="create" />);
     await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
-    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(screen.getByLabelText("訪問記録1件目の顧客"));
     await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
 
     await user.click(screen.getByRole("button", { name: "提出する" }));
@@ -182,9 +188,9 @@ describe("ReportForm (create mode)", () => {
 
     render(<ReportForm mode="create" />);
     await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
-    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(screen.getByLabelText("訪問記録1件目の顧客"));
     await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
-    await user.type(screen.getByLabelText("訪問内容"), "新商品の提案を実施");
+    await user.type(screen.getByLabelText("訪問記録1件目の訪問内容"), "新商品の提案を実施");
 
     await user.click(screen.getByRole("button", { name: "提出する" }));
 
@@ -315,7 +321,7 @@ describe("ReportForm (validation error accessibility, issue #50)", () => {
 
     render(<ReportForm mode="create" />);
     await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
-    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(screen.getByLabelText("訪問記録1件目の顧客"));
     await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
 
     await user.click(screen.getByRole("button", { name: "提出する" }));
@@ -446,7 +452,7 @@ describe("ReportForm (user switch with unsaved changes, issue #48)", () => {
 
     const { rerender } = render(<ReportForm mode="edit" reportId="10" />);
     await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
-    await user.click(screen.getAllByRole("button", { name: "この訪問記録を削除" })[1]);
+    await user.click(screen.getAllByRole("button", { name: /訪問記録\d+件目を削除/ })[1]);
 
     mockCurrentUser({ currentUser: TANAKA, selectSalesPersonId });
     rerender(<ReportForm mode="edit" reportId="10" />);
@@ -510,9 +516,9 @@ describe("ReportForm (required field validation, issue #52)", () => {
     const dateInput = await screen.findByLabelText("対象日");
     await user.clear(dateInput);
     await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
-    await user.click(screen.getByLabelText("訪問記録の顧客"));
+    await user.click(screen.getByLabelText("訪問記録1件目の顧客"));
     await user.click(await screen.findByRole("option", { name: "株式会社A社" }));
-    await user.type(screen.getByLabelText("訪問内容"), "新商品の提案を実施");
+    await user.type(screen.getByLabelText("訪問記録1件目の訪問内容"), "新商品の提案を実施");
 
     await user.click(screen.getByRole("button", { name: "提出する" }));
 
@@ -539,5 +545,53 @@ describe("ReportForm (required field validation, issue #52)", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("対象日を入力してください");
     expect(apiPutMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("ReportForm (row-numbered aria-labels, issue #54)", () => {
+  it("labels each row's controls with its 1-based row number", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    const addButton = await screen.findByRole("button", { name: "＋訪問記録を追加" });
+    await user.click(addButton);
+    await user.click(addButton);
+
+    expect(screen.getByLabelText("訪問記録1件目の顧客")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録1件目の訪問内容")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録1件目の訪問時刻")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "訪問記録1件目を削除" })).toBeInTheDocument();
+
+    expect(screen.getByLabelText("訪問記録2件目の顧客")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録2件目の訪問内容")).toBeInTheDocument();
+    expect(screen.getByLabelText("訪問記録2件目の訪問時刻")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "訪問記録2件目を削除" })).toBeInTheDocument();
+  });
+
+  it("renumbers remaining rows without gaps after deleting a row in the middle", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    const addButton = await screen.findByRole("button", { name: "＋訪問記録を追加" });
+    await user.click(addButton);
+    await user.click(addButton);
+    await user.click(addButton);
+
+    // 元の2件目に選択内容を入れておき、削除後の繰り上がり先が正しいことも確認する
+    await user.click(screen.getByLabelText("訪問記録2件目の顧客"));
+    await user.click(await screen.findByRole("option", { name: "株式会社B社" }));
+
+    await user.click(screen.getByRole("button", { name: "訪問記録1件目を削除" }));
+
+    // 3行のうち1行目を削除したので、残り2行は1件目・2件目として振り直され、3件目は存在しない
+    expect(screen.getAllByLabelText(/訪問記録\d+件目の顧客/)).toHaveLength(2);
+    expect(screen.queryByLabelText("訪問記録3件目の顧客")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "訪問記録3件目を削除" })).not.toBeInTheDocument();
+
+    // 元の2件目（B社を選択した行）が繰り上がって1件目になっている
+    expect(screen.getByLabelText("訪問記録1件目の顧客")).toHaveTextContent("株式会社B社");
+    expect(screen.getByLabelText("訪問記録2件目の顧客")).toBeInTheDocument();
   });
 });
