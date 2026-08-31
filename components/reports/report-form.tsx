@@ -321,63 +321,65 @@ export function ReportForm(props: ReportFormProps) {
             {visitRows.map((row, index) => {
               const rowNumber = index + 1;
               return (
-                <div
-                  key={row.key}
-                  className="flex flex-col gap-2 rounded-lg border p-3 md:grid md:grid-cols-[1fr_2fr_140px_40px] md:items-start md:gap-2 md:rounded-none md:border-0 md:p-0"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium md:hidden">顧客</span>
-                    <Select
-                      value={row.customerId}
-                      onValueChange={(value) => updateRow(row.key, { customerId: value })}
-                    >
-                      <SelectTrigger
-                        aria-label={`訪問記録${rowNumber}件目の顧客`}
-                        className="w-full"
+                <fieldset key={row.key} className="m-0 min-w-0 border-0 p-0">
+                  <legend className="sr-only">{`訪問記録${rowNumber}件目`}</legend>
+                  <div className="flex flex-col gap-2 rounded-lg border p-3 md:grid md:grid-cols-[1fr_2fr_140px_40px] md:items-start md:gap-2 md:rounded-none md:border-0 md:p-0">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium md:hidden">顧客</span>
+                      <Select
+                        value={row.customerId}
+                        onValueChange={(value) => updateRow(row.key, { customerId: value })}
                       >
-                        <SelectValue placeholder="顧客を選択" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((customer) => (
-                          <SelectItem
-                            key={customer.customer_id}
-                            value={String(customer.customer_id)}
-                          >
-                            {customer.company_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                        <SelectTrigger
+                          aria-label={`訪問記録${rowNumber}件目の顧客`}
+                          className="w-full"
+                        >
+                          <SelectValue placeholder="顧客を選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {customers.map((customer) => (
+                            <SelectItem
+                              key={customer.customer_id}
+                              value={String(customer.customer_id)}
+                            >
+                              {customer.company_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium md:hidden">訪問内容</span>
+                      <Textarea
+                        aria-label={`訪問記録${rowNumber}件目の訪問内容`}
+                        rows={1}
+                        value={row.visitContent}
+                        onChange={(event) =>
+                          updateRow(row.key, { visitContent: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium md:hidden">訪問時刻</span>
+                      <Input
+                        type="time"
+                        aria-label={`訪問記録${rowNumber}件目の訪問時刻`}
+                        value={row.visitTime}
+                        onChange={(event) => updateRow(row.key, { visitTime: event.target.value })}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`訪問記録${rowNumber}件目を削除`}
+                      onClick={() => removeRow(row.key)}
+                      className="self-end md:self-start"
+                    >
+                      ×
+                    </Button>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium md:hidden">訪問内容</span>
-                    <Textarea
-                      aria-label={`訪問記録${rowNumber}件目の訪問内容`}
-                      rows={1}
-                      value={row.visitContent}
-                      onChange={(event) => updateRow(row.key, { visitContent: event.target.value })}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium md:hidden">訪問時刻</span>
-                    <Input
-                      type="time"
-                      aria-label={`訪問記録${rowNumber}件目の訪問時刻`}
-                      value={row.visitTime}
-                      onChange={(event) => updateRow(row.key, { visitTime: event.target.value })}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`訪問記録${rowNumber}件目を削除`}
-                    onClick={() => removeRow(row.key)}
-                    className="self-end md:self-start"
-                  >
-                    ×
-                  </Button>
-                </div>
+                </fieldset>
               );
             })}
           </div>
