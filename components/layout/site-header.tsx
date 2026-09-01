@@ -27,11 +27,17 @@ export function SiteHeader() {
   const pathname = usePathname();
   const { salesPersons, currentUser, isLoading, error, selectSalesPersonId } = useCurrentUser();
 
+  if (pathname === "/login") {
+    return null;
+  }
+
   return (
     <header className="border-border border-b">
       <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-          <span className="text-lg font-semibold">営業日報システム</span>
+          <Link href="/" className="text-lg font-semibold hover:underline">
+            営業日報システム
+          </Link>
           <nav className="flex flex-wrap gap-1" aria-label="グローバルナビ">
             {NAV_ITEMS.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);

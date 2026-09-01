@@ -1,5 +1,8 @@
 "use client";
 
+// 日報作成・編集フォーム（SCR-02）
+// 訪問記録・Problem・Planの入力、下書き保存/提出を扱う
+// 対象日・営業担当者の重複チェックはAPI側（POST/PUT /api/reports）で行う
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -59,6 +62,7 @@ function buildVisitRecords(rows: VisitRow[]): BuildVisitRecordsResult {
     records.push({
       customer_id: Number(row.customerId),
       visit_content: row.visitContent.trim(),
+      // visit_timeは任意項目のため、未入力時は空文字を送らずキー自体を省略する
       ...(row.visitTime ? { visit_time: row.visitTime } : {}),
     });
   });
@@ -131,6 +135,8 @@ export function ReportForm(props: ReportFormProps) {
   useEffect(() => {
     if (isUserLoading || !currentUser) return;
 
+    // ユーザー切替のたびに実行されるため、初回マウント時（previousSalesPersonIdがnull）と
+    // 実際の切替を区別する必要がある。
     const previousSalesPersonId = prevSalesPersonIdRef.current;
     const isUserSwitch =
       previousSalesPersonId !== null && previousSalesPersonId !== currentUser.sales_person_id;
@@ -151,6 +157,7 @@ export function ReportForm(props: ReportFormProps) {
 
     if (skipNextLoadRef.current) {
       skipNextLoadRef.current = false;
+      // フラグ消費後もprevSalesPersonIdRefは更新しておく（次回切替時の比較対象を最新に保つため）。
       prevSalesPersonIdRef.current = currentUser.sales_person_id;
       return;
     }
@@ -169,6 +176,7 @@ export function ReportForm(props: ReportFormProps) {
           const report = await apiClient.get<ReportDetailResponse>(`/reports/${props.reportId}`);
           if (cancelled) return;
 
+          // 冒頭でnullチェック済みだが、非同期関数内のためTypeScriptの型絞り込みが効かず非nullアサーションが必要
           if (report.sales_person_id !== currentUser!.sales_person_id) {
             setInitError("この日報を編集する権限がありません");
             return;
@@ -213,6 +221,7 @@ export function ReportForm(props: ReportFormProps) {
     return () => {
       cancelled = true;
     };
+    // propsは新規/編集の切り替えでコンポーネントごと再マウントされるため、依存配列に含める必要はない
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isUserLoading, currentUser]);
 
@@ -236,6 +245,7 @@ export function ReportForm(props: ReportFormProps) {
       return;
     }
 
+    // 完全に空の行は無視されるため、ここでのerrorsは「片方だけ入力」の行のみを指す。
     const { records, errors } = buildVisitRecords(visitRows);
     if (errors.length > 0) {
       setFormError(errors.join(" / "));

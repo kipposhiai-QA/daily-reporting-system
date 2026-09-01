@@ -1,12 +1,13 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { usePathname } from "next/navigation";
 import { getStoredSalesPersonId } from "@/lib/api-client";
 import { CurrentUserProvider } from "@/lib/current-user-context";
 import { SiteHeader } from "./site-header";
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/reports",
+  usePathname: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -16,6 +17,8 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
+
+const usePathnameMock = vi.mocked(usePathname);
 
 const YAMADA = {
   sales_person_id: 1,
@@ -38,6 +41,7 @@ function mockSalesPersonsFetch(list: unknown[]) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  usePathnameMock.mockReturnValue("/reports");
 });
 
 afterEach(() => {
@@ -53,6 +57,21 @@ function renderHeader() {
 }
 
 describe("SiteHeader", () => {
+  it("links the title/logo to the top page", () => {
+    mockSalesPersonsFetch([YAMADA]);
+    renderHeader();
+
+    expect(screen.getByRole("link", { name: "営業日報システム" })).toHaveAttribute("href", "/");
+  });
+
+  it("renders nothing on the login page", () => {
+    usePathnameMock.mockReturnValue("/login");
+    mockSalesPersonsFetch([YAMADA]);
+    const { container } = renderHeader();
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("renders the three global nav links pointing at the correct routes", () => {
     mockSalesPersonsFetch([YAMADA]);
     renderHeader();
