@@ -100,6 +100,7 @@ function mockCurrentUser(overrides: Partial<ReturnType<typeof useCurrentUser>> =
     isLoading: false,
     error: null,
     selectSalesPersonId: vi.fn(),
+    refresh: vi.fn(),
     ...overrides,
   });
 }
