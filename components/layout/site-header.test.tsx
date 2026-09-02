@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePathname } from "next/navigation";
@@ -32,10 +32,41 @@ const YAMADA = {
 
 const SUZUKI_MANAGER = { ...YAMADA, sales_person_id: 5, name: "鈴木一郎", is_manager: true };
 
-function mockSalesPersonsFetch(list: unknown[]) {
+function mockFetch({
+  salesPersons = [],
+  me,
+  meStatus = 200,
+}: {
+  salesPersons?: unknown[];
+  me?: unknown;
+  meStatus?: number;
+}) {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue({ status: 200, ok: true, json: () => Promise.resolve(list) }),
+    vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.includes("/api/auth/me")) {
+        return Promise.resolve({
+          status: meStatus,
+          ok: meStatus < 400,
+          json: () =>
+            Promise.resolve(
+              meStatus < 400
+                ? me
+                : { error: { code: "UNAUTHENTICATED", message: "ログインしていません" } },
+            ),
+        });
+      }
+      if (url.includes("/api/sales-persons")) {
+        return Promise.resolve({
+          status: 200,
+          ok: true,
+          json: () => Promise.resolve(salesPersons),
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch call: ${url}`));
+    }),
   );
 }
 
@@ -58,7 +89,7 @@ function renderHeader() {
 
 describe("SiteHeader", () => {
   it("links the title/logo to the top page", () => {
-    mockSalesPersonsFetch([YAMADA]);
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
     renderHeader();
 
     expect(screen.getByRole("link", { name: "営業日報システム" })).toHaveAttribute("href", "/");
@@ -66,14 +97,14 @@ describe("SiteHeader", () => {
 
   it("renders nothing on the login page", () => {
     usePathnameMock.mockReturnValue("/login");
-    mockSalesPersonsFetch([YAMADA]);
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
     const { container } = renderHeader();
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it("renders the three global nav links pointing at the correct routes", () => {
-    mockSalesPersonsFetch([YAMADA]);
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
     renderHeader();
 
     const nav = screen.getByRole("navigation", { name: "グローバルナビ" });
@@ -88,37 +119,37 @@ describe("SiteHeader", () => {
     );
   });
 
-  it("shows a loading state before the sales-persons list resolves", () => {
-    mockSalesPersonsFetch([YAMADA]);
+  it("shows a loading state before the session resolves", () => {
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
     renderHeader();
 
     expect(screen.getByRole("button", { name: "読み込み中..." })).toBeDisabled();
   });
 
-  it("shows the auto-selected current user once loaded", async () => {
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
+  it("shows the session-resolved current user once loaded", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
     renderHeader();
 
     expect(await screen.findByRole("button", { name: "山田太郎（営業）" })).toBeInTheDocument();
   });
 
-  it("switches the current user when a dropdown item is selected", async () => {
+  it("does not change the current user when a dropdown item is selected (manual switch is inert)", async () => {
     const user = userEvent.setup();
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
     renderHeader();
 
     const trigger = await screen.findByRole("button", { name: "山田太郎（営業）" });
     await user.click(trigger);
     await user.click(await screen.findByRole("menuitem", { name: "鈴木一郎（上長）" }));
 
-    expect(await screen.findByRole("button", { name: "鈴木一郎（上長）" })).toBeInTheDocument();
-    await waitFor(() => expect(getStoredSalesPersonId()).toBe(5));
+    expect(screen.getByRole("button", { name: "山田太郎（営業）" })).toBeInTheDocument();
+    expect(getStoredSalesPersonId()).toBe(1);
   });
 
-  it("shows an error message instead of the switcher when the fetch fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network error")));
+  it("shows an error message instead of the switcher when the session cannot be resolved", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], meStatus: 401 });
     renderHeader();
 
-    expect(await screen.findByText("営業担当者一覧の取得に失敗しました")).toBeInTheDocument();
+    expect(await screen.findByText("ログインしていません")).toBeInTheDocument();
   });
 });

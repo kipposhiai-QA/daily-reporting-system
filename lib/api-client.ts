@@ -1,6 +1,8 @@
 // フロントエンドから /api を呼び出す共通クライアント。
 // 参照: docs/api-specification.md 1.2（X-Sales-Person-Id ヘッダー）
-// 現在選択中の営業担当者IDをlocalStorageから読み取り、全リクエストに自動付与する。
+// 現在の営業担当者IDをlocalStorageから読み取り、全リクエストに自動付与する。
+// このIDは lib/current-user-context.tsx がログイン中のSupabase Authセッション
+// （GET /api/auth/me）から解決した値を書き込む（Issue #62）。
 
 const CURRENT_SALES_PERSON_ID_KEY = "daily-reporting-system:current-sales-person-id";
 
