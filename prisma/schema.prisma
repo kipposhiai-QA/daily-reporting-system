@@ -28,6 +28,8 @@ model SalesPerson {
   email           String   @unique
   department      String?
   is_manager      Boolean  @default(false)
+  /// Supabase Auth のユーザーUUID（auth.users.id）。認証ユーザーとの紐付けが未実施の間はnull。
+  auth_user_id    String?  @unique @db.Uuid
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 
