@@ -15,10 +15,41 @@ const YAMADA = {
 
 const SUZUKI_MANAGER = { ...YAMADA, sales_person_id: 5, name: "鈴木一郎", is_manager: true };
 
-function mockSalesPersonsFetch(list: unknown[]) {
+function mockFetch({
+  salesPersons = [],
+  me,
+  meStatus = 200,
+}: {
+  salesPersons?: unknown[];
+  me?: unknown;
+  meStatus?: number;
+}) {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue({ status: 200, ok: true, json: () => Promise.resolve(list) }),
+    vi.fn((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+
+      if (url.includes("/api/auth/me")) {
+        return Promise.resolve({
+          status: meStatus,
+          ok: meStatus < 400,
+          json: () =>
+            Promise.resolve(
+              meStatus < 400
+                ? me
+                : { error: { code: "UNAUTHENTICATED", message: "ログインしていません" } },
+            ),
+        });
+      }
+      if (url.includes("/api/sales-persons")) {
+        return Promise.resolve({
+          status: 200,
+          ok: true,
+          json: () => Promise.resolve(salesPersons),
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch call: ${url}`));
+    }),
   );
 }
 
@@ -42,8 +73,8 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     expect(result.current).toBeInstanceOf(Error);
   });
 
-  it("auto-selects the first sales person when nothing is stored", async () => {
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
+  it("resolves the current user from the login session (GET /api/auth/me)", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
 
     const { result } = renderHook(() => useCurrentUser(), {
       wrapper: CurrentUserProvider,
@@ -53,12 +84,13 @@ describe("CurrentUserProvider / useCurrentUser", () => {
 
     expect(result.current.currentUser?.sales_person_id).toBe(1);
     expect(result.current.isManager).toBe(false);
+    expect(result.current.salesPersons).toEqual([YAMADA, SUZUKI_MANAGER]);
     expect(getStoredSalesPersonId()).toBe(1);
+    expect(result.current.error).toBeNull();
   });
 
-  it("restores a previously stored id when it still exists in the list", async () => {
-    window.localStorage.setItem("daily-reporting-system:current-sales-person-id", "5");
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
+  it("reflects is_manager from the session-resolved user", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: SUZUKI_MANAGER });
 
     const { result } = renderHook(() => useCurrentUser(), {
       wrapper: CurrentUserProvider,
@@ -70,22 +102,8 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     expect(result.current.isManager).toBe(true);
   });
 
-  it("falls back to the first sales person when the stored id no longer exists", async () => {
-    window.localStorage.setItem("daily-reporting-system:current-sales-person-id", "999");
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
-
-    const { result } = renderHook(() => useCurrentUser(), {
-      wrapper: CurrentUserProvider,
-    });
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    expect(result.current.currentUser?.sales_person_id).toBe(1);
-    expect(getStoredSalesPersonId()).toBe(1);
-  });
-
-  it("updates the selection and persists it when selectSalesPersonId is called", async () => {
-    mockSalesPersonsFetch([YAMADA, SUZUKI_MANAGER]);
+  it("ignores selectSalesPersonId (manual switching no longer affects the resolved user)", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
 
     const { result } = renderHook(() => useCurrentUser(), {
       wrapper: CurrentUserProvider,
@@ -95,13 +113,25 @@ describe("CurrentUserProvider / useCurrentUser", () => {
 
     result.current.selectSalesPersonId(5);
 
-    await waitFor(() => expect(result.current.currentUser?.sales_person_id).toBe(5));
-    expect(result.current.isManager).toBe(true);
-    expect(getStoredSalesPersonId()).toBe(5);
+    expect(result.current.currentUser?.sales_person_id).toBe(1);
+    expect(getStoredSalesPersonId()).toBe(1);
   });
 
-  it("sets an error message when the sales-persons fetch fails", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network error")));
+  it("sets an error message when the sales-persons list fetch fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/api/auth/me")) {
+          return Promise.resolve({
+            status: 200,
+            ok: true,
+            json: () => Promise.resolve(YAMADA),
+          });
+        }
+        return Promise.reject(new Error("network error"));
+      }),
+    );
 
     const { result } = renderHook(() => useCurrentUser(), {
       wrapper: CurrentUserProvider,
@@ -110,6 +140,20 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.error).toBe("営業担当者一覧の取得に失敗しました");
+    expect(result.current.currentUser?.sales_person_id).toBe(1);
+  });
+
+  it("sets an error and clears the current user when the session cannot be resolved (401)", async () => {
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], meStatus: 401 });
+
+    const { result } = renderHook(() => useCurrentUser(), {
+      wrapper: CurrentUserProvider,
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBe("ログインしていません");
     expect(result.current.currentUser).toBeNull();
+    expect(getStoredSalesPersonId()).toBeNull();
   });
 });
