@@ -7,6 +7,7 @@ import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useCurrentUser } from "@/lib/current-user-context";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -15,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
  */
 export function LoginForm() {
   const router = useRouter();
+  const { refresh } = useCurrentUser();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,6 +50,11 @@ export function LoginForm() {
         return;
       }
 
+      // ヘッダーの「現在のユーザー」表示（lib/current-user-context.tsx）は初回マウント時にのみ
+      // GET /api/auth/me を取得するクライアントサイドの状態のため、router.pushだけではログイン
+      // 後の状態が反映されない。refresh()で明示的に再取得してから遷移する（Issue #66）。
+      await refresh();
+      router.refresh();
       router.push("/");
     } finally {
       setIsSubmitting(false);

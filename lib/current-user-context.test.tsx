@@ -156,4 +156,25 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     expect(result.current.currentUser).toBeNull();
     expect(getStoredSalesPersonId()).toBeNull();
   });
+
+  it("re-resolves the current user via refresh() after the session changes (Issue #66)", async () => {
+    // ログイン前（未ログイン=401）の状態でマウントする
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], meStatus: 401 });
+
+    const { result } = renderHook(() => useCurrentUser(), {
+      wrapper: CurrentUserProvider,
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.currentUser).toBeNull();
+
+    // ログイン成功によりセッションのcookieが更新された状態を模す
+    mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
+
+    await result.current.refresh();
+
+    await waitFor(() => expect(result.current.currentUser?.sales_person_id).toBe(1));
+    expect(result.current.error).toBeNull();
+    expect(getStoredSalesPersonId()).toBe(1);
+  });
 });

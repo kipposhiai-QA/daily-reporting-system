@@ -1,13 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useCurrentUser } from "@/lib/current-user-context";
 import { createClient } from "@/lib/supabase/client";
 import { LoginForm } from "./login-form";
 
 const push = vi.fn();
+const refreshRouter = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, refresh: refreshRouter }),
 }));
 
 vi.mock("next/link", () => ({
@@ -24,15 +26,33 @@ vi.mock("@/lib/supabase/client", () => ({
   createClient: vi.fn(),
 }));
 
+const refreshCurrentUser = vi.fn();
+
+vi.mock("@/lib/current-user-context", () => ({
+  useCurrentUser: vi.fn(),
+}));
+
 const createClientMock = vi.mocked(createClient);
+const useCurrentUserMock = vi.mocked(useCurrentUser);
 
 beforeEach(() => {
   push.mockReset();
+  refreshRouter.mockReset();
   signInWithPassword.mockReset();
+  refreshCurrentUser.mockReset().mockResolvedValue(undefined);
   createClientMock.mockReset();
   createClientMock.mockReturnValue({
     auth: { signInWithPassword },
   } as unknown as ReturnType<typeof createClient>);
+  useCurrentUserMock.mockReturnValue({
+    salesPersons: [],
+    currentUser: null,
+    isManager: false,
+    isLoading: false,
+    error: null,
+    selectSalesPersonId: vi.fn(),
+    refresh: refreshCurrentUser,
+  });
 });
 
 describe("LoginForm", () => {
@@ -102,6 +122,31 @@ describe("LoginForm", () => {
     });
   });
 
+  it("refreshes the current user and the router before navigating on success (Issue #66)", async () => {
+    signInWithPassword.mockResolvedValue({ data: { user: {}, session: {} }, error: null });
+    const callOrder: string[] = [];
+    refreshCurrentUser.mockImplementation(async () => {
+      callOrder.push("refreshCurrentUser");
+    });
+    refreshRouter.mockImplementation(() => {
+      callOrder.push("router.refresh");
+    });
+    push.mockImplementation(() => {
+      callOrder.push("router.push");
+    });
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText("メールアドレス"), "yamada@example.com");
+    await user.type(screen.getByLabelText("パスワード"), "password123");
+    await user.click(screen.getByRole("button", { name: "ログイン" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    // ヘッダーの「現在のユーザー」表示が手動リロードなしで反映されるよう、
+    // 遷移前にcurrentUserを再取得しておく必要がある（Issue #66）。
+    expect(callOrder).toEqual(["refreshCurrentUser", "router.refresh", "router.push"]);
+  });
+
   it("shows an error message when Supabase Auth rejects the credentials (TC-SCR-LOGIN-02)", async () => {
     signInWithPassword.mockResolvedValue({
       data: { user: null, session: null },
@@ -121,6 +166,7 @@ describe("LoginForm", () => {
       "メールアドレスまたはパスワードが正しくありません",
     );
     expect(push).not.toHaveBeenCalled();
+    expect(refreshCurrentUser).not.toHaveBeenCalled();
   });
 
   it("disables the submit button while signing in", async () => {

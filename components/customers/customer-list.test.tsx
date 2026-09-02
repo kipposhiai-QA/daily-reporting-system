@@ -71,6 +71,7 @@ function mockCurrentUser() {
     isLoading: false,
     error: null,
     selectSalesPersonId: vi.fn(),
+    refresh: vi.fn(),
   });
 }
 
