@@ -37,6 +37,15 @@
 
 `--set-env-vars` の値はカンマ区切りのため、接続文字列にカンマを含めることはできない（Supabaseの接続文字列は通常含まない）。Makefile側ではカンマの代わりに `|` を区切り文字とするカスタムデリミタ構文（`^|^KEY1=VAL1|KEY2=VAL2`）を使っている。
 
+## Supabase Auth（ブラウザ用クライアント）接続情報の管理方式
+
+`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`（`.env.example` 参照）も同じくGitHub Secrets経由で管理するが、`DATABASE_URL` / `DIRECT_URL` とは渡し方が異なる。
+
+- `NEXT_PUBLIC_` プレフィックスの環境変数は、Next.jsの `next build` 実行時にクライアントバンドルへ値がそのまま埋め込まれる（サーバー側でのみ読まれる `DATABASE_URL` 等とは違い、ビルド後は実行時の環境変数を変えても反映されない）。
+- そのため `make build` は、`docker build --build-arg` としてこの2つを渡し、Dockerfileの `builder` ステージ（`RUN npm run build` の直前）で `ENV` に設定してからビルドする。Cloud Runの `--set-env-vars`（`make deploy` 側）では代替できない。
+
+**Makefileにはこれらの値をハードコードしない。** `make build` / `make release` は環境変数 `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` が設定されていることを前提とし、未設定の場合はエラーで停止する（ローカル・CIそれぞれの読み込み方は `DATABASE_URL` / `DIRECT_URL` と同様）。
+
 ## 初回セットアップ（1度だけ実行）
 
 以下は、このリポジトリをGitHubにpushし、GCPプロジェクト `daily-reporting-system-2026` に対して十分な権限（オーナー相当）を持つアカウントで実行する。
@@ -66,11 +75,16 @@ make setup-wif PROJECT_ID=daily-reporting-system-2026 GITHUB_REPO=<org>/<repo>
 - `DATABASE_URL`
 - `DIRECT_URL`
 
-これら4つをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
+加えて、Supabase Auth（ブラウザ用クライアント）のビルド時埋め込み情報として以下の2つも登録する（値はSupabaseダッシュボード > Project Settings > API から取得。`NEXT_PUBLIC_SUPABASE_ANON_KEY` はanon keyのみとし、`service_role` key は登録しないこと）。
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+これら6つをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
 
 ## ローカルから手動デプロイする場合
 
-`make deploy` / `make release` はCloud Runに渡す `DATABASE_URL` / `DIRECT_URL` を環境変数として要求するため、先に `.env` を読み込んでおく。
+`make build` / `make deploy` / `make release` はそれぞれ `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`、`DATABASE_URL` / `DIRECT_URL` を環境変数として要求するため、先に `.env` を読み込んでおく。
 
 ```bash
 # .env を環境変数として読み込む

@@ -2,23 +2,27 @@
 
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
 
 /**
- * ログイン画面のUIモックアップ。
- * 現状は認証を実装しておらず（画面定義書0.1のユーザー切替 + `X-Sales-Person-Id` ヘッダーが代替）、
- * 将来的にSupabase Authと接続する予定。接続までの間、送信時はダミー処理（コンソール出力）のみ行う。
+ * ログイン画面。Supabase Auth (signInWithPassword) に接続し、
+ * 成功時はトップページへ遷移、失敗時はフォーム上にエラーを表示する。
  */
 export function LoginForm() {
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
 
@@ -31,8 +35,23 @@ export function LoginForm() {
       return;
     }
 
-    // TODO: Supabase Authと接続後、実際のサインイン処理に置き換える。
-    console.log("[login] submitted (dummy)", { email });
+    setIsSubmitting(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        setFormError("メールアドレスまたはパスワードが正しくありません");
+        return;
+      }
+
+      router.push("/");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -85,10 +104,14 @@ export function LoginForm() {
             </div>
           </Field>
 
-          {formError && <p className="text-destructive text-sm">{formError}</p>}
+          {formError && (
+            <p className="text-destructive text-sm" role="alert">
+              {formError}
+            </p>
+          )}
 
-          <Button type="submit" className="w-full">
-            ログイン
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? "ログイン中..." : "ログイン"}
           </Button>
         </form>
 
