@@ -1,7 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createClient } from "@/lib/supabase/client";
 import { LoginForm } from "./login-form";
+
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
@@ -11,17 +18,24 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const signInWithPassword = vi.fn();
+
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: vi.fn(),
+}));
+
+const createClientMock = vi.mocked(createClient);
+
+beforeEach(() => {
+  push.mockReset();
+  signInWithPassword.mockReset();
+  createClientMock.mockReset();
+  createClientMock.mockReturnValue({
+    auth: { signInWithPassword },
+  } as unknown as ReturnType<typeof createClient>);
+});
+
 describe("LoginForm", () => {
-  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    consoleLogSpy.mockRestore();
-  });
-
   it("renders the email and password fields", () => {
     render(<LoginForm />);
 
@@ -58,7 +72,7 @@ describe("LoginForm", () => {
     await user.click(screen.getByRole("button", { name: "ログイン" }));
 
     expect(await screen.findByText("メールアドレスを入力してください")).toBeInTheDocument();
-    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(signInWithPassword).not.toHaveBeenCalled();
   });
 
   it("rejects submission when the password is empty", async () => {
@@ -69,10 +83,11 @@ describe("LoginForm", () => {
     await user.click(screen.getByRole("button", { name: "ログイン" }));
 
     expect(await screen.findByText("パスワードを入力してください")).toBeInTheDocument();
-    expect(consoleLogSpy).not.toHaveBeenCalled();
+    expect(signInWithPassword).not.toHaveBeenCalled();
   });
 
-  it("logs a dummy submission when both fields are filled", async () => {
+  it("signs in with Supabase Auth and redirects to the top page on success (TC-SCR-LOGIN-01)", async () => {
+    signInWithPassword.mockResolvedValue({ data: { user: {}, session: {} }, error: null });
     const user = userEvent.setup();
     render(<LoginForm />);
 
@@ -80,9 +95,51 @@ describe("LoginForm", () => {
     await user.type(screen.getByLabelText("パスワード"), "password123");
     await user.click(screen.getByRole("button", { name: "ログイン" }));
 
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      "[login] submitted (dummy)",
-      expect.objectContaining({ email: "yamada@example.com" }),
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "yamada@example.com",
+      password: "password123",
+    });
+  });
+
+  it("shows an error message when Supabase Auth rejects the credentials (TC-SCR-LOGIN-02)", async () => {
+    signInWithPassword.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { name: "AuthApiError", message: "Invalid login credentials" },
+    });
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText("メールアドレス"), "yamada@example.com");
+    await user.type(screen.getByLabelText("パスワード"), "wrong-password");
+    await user.click(screen.getByRole("button", { name: "ログイン" }));
+
+    expect(
+      await screen.findByText("メールアドレスまたはパスワードが正しくありません"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "メールアドレスまたはパスワードが正しくありません",
     );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("disables the submit button while signing in", async () => {
+    let resolveSignIn: (value: { data: unknown; error: null }) => void = () => {};
+    signInWithPassword.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSignIn = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.type(screen.getByLabelText("メールアドレス"), "yamada@example.com");
+    await user.type(screen.getByLabelText("パスワード"), "password123");
+    await user.click(screen.getByRole("button", { name: "ログイン" }));
+
+    expect(await screen.findByRole("button", { name: "ログイン中..." })).toBeDisabled();
+
+    resolveSignIn({ data: { user: {}, session: {} }, error: null });
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
   });
 });

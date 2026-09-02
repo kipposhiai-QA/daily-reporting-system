@@ -17,6 +17,11 @@ GITHUB_REPO ?= # 例: your-org/daily-reporting-system
 # （詳細は docs/deployment.md の「Supabase接続情報の管理方式」を参照）。
 # - ローカル実行時: `set -a; source .env; set +a` 等で事前に環境変数として読み込んでおく
 # - CI実行時: .github/workflows/ci.yml の deploy ジョブがGitHub Secretsから渡す
+#
+# NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY も同様にMakefileへ書かず、
+# `build` が環境変数として読み取って `docker build --build-arg` でDockerfileへ渡す。
+# NEXT_PUBLIC_* はNext.jsのビルド時にクライアントバンドルへ埋め込まれるため、
+# DATABASE_URL/DIRECT_URLと異なり `deploy` 側（Cloud Runの実行時環境変数）で渡しても反映されない。
 
 .PHONY: help gcloud-auth setup-apis setup-artifact-registry setup-wif build deploy release
 
@@ -24,7 +29,7 @@ help:
 	@echo "make setup-apis                 # 必要なGCP APIを有効化（初回のみ）"
 	@echo "make setup-artifact-registry     # Artifact Registryリポジトリを作成（初回のみ）"
 	@echo "make setup-wif GITHUB_REPO=org/repo  # Workload Identity FederationとデプロイSAを作成（初回のみ）"
-	@echo "make build                       # Dockerでコンテナイメージをローカルビルドし、Artifact Registryへpush"
+	@echo "make build                       # Dockerでコンテナイメージをローカルビルドし、Artifact Registryへpush（事前にNEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEYを環境変数として読み込んでおくこと）"
 	@echo "make deploy                      # Cloud Runへデプロイ（事前にDATABASE_URL/DIRECT_URLを環境変数として読み込んでおくこと）"
 	@echo "make release                     # build + deploy をまとめて実行"
 
@@ -86,7 +91,20 @@ setup-wif:
 	@echo "  GCP_SERVICE_ACCOUNT            = $(DEPLOY_SA_EMAIL)"
 
 build:
-	docker build -t $(IMAGE) .
+	@if [ -z "$(NEXT_PUBLIC_SUPABASE_URL)" ]; then \
+		echo "NEXT_PUBLIC_SUPABASE_URL が設定されていません。ローカルなら .env を読み込む（例: set -a; source .env; set +a）か、"; \
+		echo "CIならGitHub Secretsの NEXT_PUBLIC_SUPABASE_URL を確認してください。"; \
+		exit 1; \
+	fi
+	@if [ -z "$(NEXT_PUBLIC_SUPABASE_ANON_KEY)" ]; then \
+		echo "NEXT_PUBLIC_SUPABASE_ANON_KEY が設定されていません。ローカルなら .env を読み込む（例: set -a; source .env; set +a）か、"; \
+		echo "CIならGitHub Secretsの NEXT_PUBLIC_SUPABASE_ANON_KEY を確認してください。"; \
+		exit 1; \
+	fi
+	docker build \
+		--build-arg NEXT_PUBLIC_SUPABASE_URL="$(NEXT_PUBLIC_SUPABASE_URL)" \
+		--build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$(NEXT_PUBLIC_SUPABASE_ANON_KEY)" \
+		-t $(IMAGE) .
 	gcloud auth configure-docker $(REGION)-docker.pkg.dev --project=$(PROJECT_ID) --quiet
 	docker push $(IMAGE)
 

@@ -24,6 +24,13 @@ COPY --from=deps /app/generated ./generated
 # DATABASE_URL set here too even though no query actually runs during the build.
 ARG DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 ENV DATABASE_URL=$DATABASE_URL
+# NEXT_PUBLIC_* variables are inlined into the client bundle at build time, so (unlike
+# DATABASE_URL) they must be real values here — setting them later via `gcloud run deploy
+# --set-env-vars` has no effect on an already-built bundle.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 RUN npm run build
 
 FROM base AS runner
