@@ -1,13 +1,17 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePathname } from "next/navigation";
-import { getStoredSalesPersonId } from "@/lib/api-client";
+import { usePathname, useRouter } from "next/navigation";
 import { CurrentUserProvider } from "@/lib/current-user-context";
+import { createClient } from "@/lib/supabase/client";
 import { SiteHeader } from "./site-header";
+
+const push = vi.fn();
+const refreshRouter = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(),
+  useRouter: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -18,7 +22,15 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+const signOut = vi.fn();
+
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: vi.fn(),
+}));
+
 const usePathnameMock = vi.mocked(usePathname);
+const useRouterMock = vi.mocked(useRouter);
+const createClientMock = vi.mocked(createClient);
 
 const YAMADA = {
   sales_person_id: 1,
@@ -72,7 +84,18 @@ function mockFetch({
 
 beforeEach(() => {
   window.localStorage.clear();
+  push.mockReset();
+  refreshRouter.mockReset();
+  signOut.mockReset().mockResolvedValue({ error: null });
   usePathnameMock.mockReturnValue("/reports");
+  useRouterMock.mockReturnValue({
+    push,
+    refresh: refreshRouter,
+  } as unknown as ReturnType<typeof useRouter>);
+  createClientMock.mockReset();
+  createClientMock.mockReturnValue({
+    auth: { signOut },
+  } as unknown as ReturnType<typeof createClient>);
 });
 
 afterEach(() => {
@@ -119,37 +142,67 @@ describe("SiteHeader", () => {
     );
   });
 
-  it("shows a loading state before the session resolves", () => {
-    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
-    renderHeader();
-
-    expect(screen.getByRole("button", { name: "読み込み中..." })).toBeDisabled();
-  });
-
   it("shows the session-resolved current user once loaded", async () => {
     mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
     renderHeader();
 
-    expect(await screen.findByRole("button", { name: "山田太郎（営業）" })).toBeInTheDocument();
+    expect(await screen.findByText("山田太郎（営業）")).toBeInTheDocument();
   });
 
-  it("does not change the current user when a dropdown item is selected (manual switch is inert)", async () => {
-    const user = userEvent.setup();
+  it("does not render the sales-person switch dropdown", async () => {
     mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], me: YAMADA });
     renderHeader();
 
-    const trigger = await screen.findByRole("button", { name: "山田太郎（営業）" });
-    await user.click(trigger);
-    await user.click(await screen.findByRole("menuitem", { name: "鈴木一郎（上長）" }));
+    await screen.findByText("山田太郎（営業）");
 
-    expect(screen.getByRole("button", { name: "山田太郎（営業）" })).toBeInTheDocument();
-    expect(getStoredSalesPersonId()).toBe(1);
+    expect(screen.queryByRole("button", { name: "山田太郎（営業）" })).not.toBeInTheDocument();
+    expect(screen.queryByText("営業担当者を選択")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+    expect(screen.queryByText("鈴木一郎（上長）")).not.toBeInTheDocument();
   });
 
-  it("shows an error message instead of the switcher when the session cannot be resolved", async () => {
+  it("shows an error message when the session cannot be resolved", async () => {
     mockFetch({ salesPersons: [YAMADA, SUZUKI_MANAGER], meStatus: 401 });
     renderHeader();
 
     expect(await screen.findByText("ログインしていません")).toBeInTheDocument();
+  });
+
+  it("always shows a logout button directly in the header", () => {
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
+    renderHeader();
+
+    expect(screen.getByRole("button", { name: "ログアウト" })).toBeInTheDocument();
+  });
+
+  it("signs out via Supabase Auth and redirects to /login when the logout button is clicked", async () => {
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "ログアウト" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+    expect(signOut).toHaveBeenCalled();
+    expect(refreshRouter).toHaveBeenCalled();
+  });
+
+  it("disables the logout button while signing out", async () => {
+    mockFetch({ salesPersons: [YAMADA], me: YAMADA });
+    let resolveSignOut: (value: { error: null }) => void = () => {};
+    signOut.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSignOut = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "ログアウト" }));
+
+    expect(await screen.findByRole("button", { name: "ログアウト中..." })).toBeDisabled();
+
+    resolveSignOut({ error: null });
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
   });
 });

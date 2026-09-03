@@ -1,17 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useCurrentUser } from "@/lib/current-user-context";
+import { createClient } from "@/lib/supabase/client";
 
 const NAV_ITEMS = [
   { href: "/reports", label: "日報" },
@@ -25,10 +19,24 @@ function roleLabel(isManager: boolean): string {
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const { salesPersons, currentUser, isLoading, error, selectSalesPersonId } = useCurrentUser();
+  const router = useRouter();
+  const { currentUser, isLoading, error } = useCurrentUser();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   if (pathname === "/login") {
     return null;
+  }
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -55,39 +63,21 @@ export function SiteHeader() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">現在のユーザー:</span>
+        <div className="flex items-center gap-3 text-sm">
           {error ? (
             <span className="text-destructive">{error}</span>
           ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isLoading || salesPersons.length === 0}
-                >
-                  {isLoading
-                    ? "読み込み中..."
-                    : currentUser
-                      ? `${currentUser.name}（${roleLabel(currentUser.is_manager)}）`
-                      : "未選択"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>営業担当者を選択</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {salesPersons.map((person) => (
-                  <DropdownMenuItem
-                    key={person.sales_person_id}
-                    onSelect={() => selectSalesPersonId(person.sales_person_id)}
-                  >
-                    {person.name}（{roleLabel(person.is_manager)}）
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <span className="text-muted-foreground">
+              {isLoading
+                ? "読み込み中..."
+                : currentUser
+                  ? `${currentUser.name}（${roleLabel(currentUser.is_manager)}）`
+                  : null}
+            </span>
           )}
+          <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoggingOut}>
+            {isLoggingOut ? "ログアウト中..." : "ログアウト"}
+          </Button>
         </div>
       </div>
     </header>
