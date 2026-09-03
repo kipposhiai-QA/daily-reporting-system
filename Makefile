@@ -30,7 +30,7 @@ help:
 	@echo "make setup-artifact-registry     # Artifact Registryリポジトリを作成（初回のみ）"
 	@echo "make setup-wif GITHUB_REPO=org/repo  # Workload Identity FederationとデプロイSAを作成（初回のみ）"
 	@echo "make build                       # Dockerでコンテナイメージをローカルビルドし、Artifact Registryへpush（事前にNEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEYを環境変数として読み込んでおくこと）"
-	@echo "make deploy                      # Cloud Runへデプロイ（事前にDATABASE_URL/DIRECT_URLを環境変数として読み込んでおくこと）"
+	@echo "make deploy                      # Cloud Runへデプロイ（事前にDATABASE_URL/DIRECT_URL/SUPABASE_SERVICE_ROLE_KEYを環境変数として読み込んでおくこと）"
 	@echo "make release                     # build + deploy をまとめて実行"
 
 gcloud-auth:
@@ -119,13 +119,18 @@ deploy:
 		echo "CIならGitHub Secretsの DIRECT_URL を確認してください。"; \
 		exit 1; \
 	fi
+	@if [ -z "$(SUPABASE_SERVICE_ROLE_KEY)" ]; then \
+		echo "SUPABASE_SERVICE_ROLE_KEY が設定されていません。ローカルなら .env を読み込む（例: set -a; source .env; set +a）か、"; \
+		echo "CIならGitHub Secretsの SUPABASE_SERVICE_ROLE_KEY を確認してください。"; \
+		exit 1; \
+	fi
 	gcloud run deploy $(SERVICE_NAME) \
 		--project=$(PROJECT_ID) \
 		--region=$(REGION) \
 		--image=$(IMAGE) \
 		--platform=managed \
 		--allow-unauthenticated \
-		--set-env-vars="^|^DATABASE_URL=$(DATABASE_URL)|DIRECT_URL=$(DIRECT_URL)" \
+		--set-env-vars="^|^DATABASE_URL=$(DATABASE_URL)|DIRECT_URL=$(DIRECT_URL)|SUPABASE_SERVICE_ROLE_KEY=$(SUPABASE_SERVICE_ROLE_KEY)" \
 		--quiet
 
 release: build deploy

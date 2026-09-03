@@ -89,6 +89,17 @@ describe("SalesPersonList", () => {
     );
   });
 
+  it("links the invite button to /sales-persons/invite (Issue #74)", () => {
+    mockCurrentUser();
+
+    render(<SalesPersonList />);
+
+    expect(screen.getByRole("link", { name: "招待する" })).toHaveAttribute(
+      "href",
+      "/sales-persons/invite",
+    );
+  });
+
   it("navigates to the edit screen when a row is clicked", async () => {
     mockCurrentUser();
     const user = userEvent.setup();

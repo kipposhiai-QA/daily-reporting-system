@@ -29,9 +29,14 @@ export function SalesPersonList() {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">営業マスタ</h1>
-        <Button asChild>
-          <Link href="/sales-persons/new">＋新規登録</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/sales-persons/invite">招待する</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/sales-persons/new">＋新規登録</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border">
