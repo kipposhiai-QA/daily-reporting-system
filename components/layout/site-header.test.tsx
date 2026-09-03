@@ -126,6 +126,17 @@ describe("SiteHeader", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it.each(["/reset-password", "/reset-password/confirm"])(
+    "renders nothing on %s (Issue #72)",
+    (pathname) => {
+      usePathnameMock.mockReturnValue(pathname);
+      mockFetch({ salesPersons: [YAMADA], me: YAMADA });
+      const { container } = renderHeader();
+
+      expect(container).toBeEmptyDOMElement();
+    },
+  );
+
   it("renders the three global nav links pointing at the correct routes", () => {
     mockFetch({ salesPersons: [YAMADA], me: YAMADA });
     renderHeader();

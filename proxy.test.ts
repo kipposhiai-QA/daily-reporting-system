@@ -68,12 +68,41 @@ describe("proxy", () => {
 
     expect(response.headers.get("location")).toBe("https://app.example.com/login");
   });
+
+  it("does not redirect when there is no user and the path is /reset-password", async () => {
+    const request = new NextRequest("https://app.example.com/reset-password");
+    mockSession(request, null);
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect when there is no user and the path is /reset-password/confirm (recovery session not yet established)", async () => {
+    const request = new NextRequest("https://app.example.com/reset-password/confirm?code=abc123");
+    mockSession(request, null);
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect away from /reset-password when logged in", async () => {
+    const request = new NextRequest("https://app.example.com/reset-password");
+    mockSession(request, { id: "11111111-1111-1111-1111-111111111111" });
+
+    const response = await proxy(request);
+
+    expect(response.headers.get("location")).toBeNull();
+  });
 });
 
 describe("config.matcher", () => {
   it.each([
     ["/", true],
     ["/login", true],
+    ["/reset-password", true],
+    ["/reset-password/confirm", true],
     ["/reports", true],
     ["/reports/1/edit", true],
     ["/api/reports", false],

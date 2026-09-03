@@ -122,6 +122,13 @@ export function LoginForm() {
           </Button>
         </form>
 
+        <Link
+          href="/reset-password"
+          className="text-muted-foreground text-center text-sm hover:underline"
+        >
+          パスワードを忘れた方
+        </Link>
+
         <div className="text-muted-foreground rounded-lg border p-3 text-center text-xs">
           <p>テスト用アカウント:</p>
           <p>メール: yamada@example.com</p>

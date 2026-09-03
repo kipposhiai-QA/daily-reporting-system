@@ -70,6 +70,15 @@ describe("LoginForm", () => {
     expect(screen.getByRole("link", { name: "トップに戻る" })).toHaveAttribute("href", "/");
   });
 
+  it("links to the password reset page (Issue #72)", () => {
+    render(<LoginForm />);
+
+    expect(screen.getByRole("link", { name: "パスワードを忘れた方" })).toHaveAttribute(
+      "href",
+      "/reset-password",
+    );
+  });
+
   it("toggles password visibility", async () => {
     const user = userEvent.setup();
     render(<LoginForm />);
