@@ -13,6 +13,9 @@ const NAV_ITEMS = [
   { href: "/sales-persons", label: "営業マスタ" },
 ] as const;
 
+// ヘッダーを表示しない、未ログインでもアクセスできるページ。
+const HEADERLESS_PATHS = ["/login", "/reset-password", "/reset-password/confirm"];
+
 function roleLabel(isManager: boolean): string {
   return isManager ? "上長" : "営業";
 }
@@ -23,7 +26,7 @@ export function SiteHeader() {
   const { currentUser, isLoading, error } = useCurrentUser();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  if (pathname === "/login") {
+  if (HEADERLESS_PATHS.includes(pathname)) {
     return null;
   }
 
