@@ -46,6 +46,15 @@
 
 **Makefileにはこれらの値をハードコードしない。** `make build` / `make release` は環境変数 `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` が設定されていることを前提とし、未設定の場合はエラーで停止する（ローカル・CIそれぞれの読み込み方は `DATABASE_URL` / `DIRECT_URL` と同様）。
 
+## Supabase Service Roleキー（Admin API）の管理方式
+
+`SUPABASE_SERVICE_ROLE_KEY`（`.env.example` 参照）は、新規担当者の招待API（`POST /api/sales-persons/invite`、参照: Issue #74）がSupabase Admin API（`inviteUserByEmail`）を呼び出す際に使用する、サーバー側専用の秘匿情報である。
+
+- `NEXT_PUBLIC_` プレフィックスを付けず、ブラウザバンドルに含まれないサーバー専用の環境変数として扱う（`NEXT_PUBLIC_SUPABASE_ANON_KEY` と違い、この値が漏洩するとSupabase Authの全ユーザーを操作できてしまうため）。
+- 渡し方は `DATABASE_URL` / `DIRECT_URL` と同様（サーバー実行時にのみ読まれるため、Cloud Runの `--set-env-vars`、GitHub Secrets経由で管理する）。`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` のようなビルド時埋め込み（`--build-arg`）は不要。
+
+**Makefileにはこの値をハードコードしない。** `make deploy` / `make release` は環境変数 `SUPABASE_SERVICE_ROLE_KEY` が設定されていることを前提とし、未設定の場合はエラーで停止する（ローカル・CIそれぞれの読み込み方は `DATABASE_URL` / `DIRECT_URL` と同様）。
+
 ## 初回セットアップ（1度だけ実行）
 
 以下は、このリポジトリをGitHubにpushし、GCPプロジェクト `daily-reporting-system-2026` に対して十分な権限（オーナー相当）を持つアカウントで実行する。
@@ -80,11 +89,15 @@ make setup-wif PROJECT_ID=daily-reporting-system-2026 GITHUB_REPO=<org>/<repo>
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-これら6つをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
+最後に、新規担当者の招待API（Supabase Admin API）用のService Roleキーも登録する（値はSupabaseダッシュボード > Project Settings > API の `service_role` key。上記のanon keyとは別の値であることに注意。参照: 「Supabase Service Roleキー（Admin API）の管理方式」）。
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+これら7つをGitHubリポジトリの **Settings → Secrets and variables → Actions** に登録する。登録後、`main` ブランチへのpushで自動デプロイが有効になる。
 
 ## ローカルから手動デプロイする場合
 
-`make build` / `make deploy` / `make release` はそれぞれ `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`、`DATABASE_URL` / `DIRECT_URL` を環境変数として要求するため、先に `.env` を読み込んでおく。
+`make build` / `make deploy` / `make release` はそれぞれ `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`、`DATABASE_URL` / `DIRECT_URL` / `SUPABASE_SERVICE_ROLE_KEY` を環境変数として要求するため、先に `.env` を読み込んでおく。
 
 ```bash
 # .env を環境変数として読み込む
