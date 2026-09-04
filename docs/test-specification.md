@@ -60,7 +60,7 @@
 - 「上長としてログイン」＝ 鈴木一郎（sales_person_id=5, is_manager=true）としてログインした状態
 - 「別営業としてログイン」＝ 田中花子（sales_person_id=2, is_manager=false）としてログインした状態
 
-日報API（4.3）・コメントAPI（4.4）はSupabase Authのログインセッションで識別する（api-specification.md 1.2参照。Issue #78 Stage 1/3で移行済み）。営業マスタAPI（4.1）・顧客マスタAPI（4.2）は移行前のため、引き続き `X-Sales-Person-Id` ヘッダーで対象の sales_person_id を指定する。
+日報API（4.3）・コメントAPI（4.4）・営業マスタAPI（4.1）はSupabase Authのログインセッションで識別する（api-specification.md 1.2参照。Issue #78 Stage 1/3・Stage 2/3で移行済み）。顧客マスタAPI（4.2）は移行前のため、引き続き `X-Sales-Person-Id` ヘッダーで対象の sales_person_id を指定する。
 
 ---
 

@@ -5,12 +5,15 @@ import { Prisma } from "@/generated/prisma/client";
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     salesPerson: {
-      findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
     },
   },
+}));
+
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
 }));
 
 const inviteUserByEmail = vi.fn();
@@ -22,9 +25,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { POST } from "./route";
 
-const findUniqueMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const createMock = vi.mocked(prisma.salesPerson.create);
 const updateMock = vi.mocked(prisma.salesPerson.update);
 const deleteMock = vi.mocked(prisma.salesPerson.delete);
@@ -52,23 +56,25 @@ const CREATED_SATO = {
 };
 
 beforeEach(() => {
-  findUniqueMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
   createMock.mockReset();
   updateMock.mockReset();
   deleteMock.mockReset();
   inviteUserByEmail.mockReset();
 });
 
-function postRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/sales-persons/invite", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
 describe("POST /api/sales-persons/invite", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await POST(postRequest({ name: "佐藤次郎", email: "sato@example.com" }));
 
     expect(response.status).toBe(401);
@@ -77,9 +83,9 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("returns 422 when required fields are missing", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
 
-    const response = await POST(postRequest({}, { "X-Sales-Person-Id": "1" }));
+    const response = await POST(postRequest({}));
 
     expect(response.status).toBe(422);
     const body = await response.json();
@@ -89,7 +95,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("returns 409 without calling the Admin API when the email is already used by a SalesPerson", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -97,9 +103,7 @@ describe("POST /api/sales-persons/invite", () => {
       }),
     );
 
-    const response = await POST(
-      postRequest({ name: "山田太郎2", email: "yamada@example.com" }, { "X-Sales-Person-Id": "1" }),
-    );
+    const response = await POST(postRequest({ name: "山田太郎2", email: "yamada@example.com" }));
 
     expect(response.status).toBe(409);
     const body = await response.json();
@@ -108,7 +112,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("creates the SalesPerson, invites via Supabase Admin API, and links auth_user_id (201)", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue(CREATED_SATO as never);
     inviteUserByEmail.mockResolvedValue({
       data: { user: { id: "22222222-2222-2222-2222-222222222222" } },
@@ -120,10 +124,7 @@ describe("POST /api/sales-persons/invite", () => {
     } as never);
 
     const response = await POST(
-      postRequest(
-        { name: "佐藤次郎", email: "sato@example.com", department: null },
-        { "X-Sales-Person-Id": "1" },
-      ),
+      postRequest({ name: "佐藤次郎", email: "sato@example.com", department: null }),
     );
 
     expect(response.status).toBe(201);
@@ -144,7 +145,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("rolls back the created SalesPerson when the Admin API invite fails", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue(CREATED_SATO as never);
     inviteUserByEmail.mockResolvedValue({
       data: { user: null },
@@ -155,9 +156,7 @@ describe("POST /api/sales-persons/invite", () => {
     });
     deleteMock.mockResolvedValue(CREATED_SATO as never);
 
-    const response = await POST(
-      postRequest({ name: "佐藤次郎", email: "sato@example.com" }, { "X-Sales-Person-Id": "1" }),
-    );
+    const response = await POST(postRequest({ name: "佐藤次郎", email: "sato@example.com" }));
 
     expect(response.status).toBe(409);
     const body = await response.json();

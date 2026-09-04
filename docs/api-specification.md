@@ -14,15 +14,14 @@
 
 X-Sales-Person-Id ヘッダーの値をサーバーが無条件に信頼しており、クライアントが任意の sales_person_id を指定して他人になりすませてしまう問題（Issue #78）に対応するため、Supabase Authのログインセッション（cookie）で本人を識別する方式へ段階的に移行している。
 
-- **移行済み**（Issue #78 Stage 1/3）: 日報API（5章）・コメントAPI（6章）。`X-Sales-Person-Id` ヘッダーは不要かつ無視される。サーバーはSupabase Authのセッションを検証し、対応する `SALES_PERSON`（`auth_user_id` で紐付け）を「現在のユーザー」として解釈する。未ログインの場合は401 `UNAUTHENTICATED`。
-- **未移行**（Stage 2/3で対応予定）: 営業マスタAPI（3章）・顧客マスタAPI（4章）。引き続き以下の方式。
+- **移行済み**（Issue #78 Stage 1/3・Stage 2/3）: 日報API（5章）・コメントAPI（6章）・営業マスタAPI（3章）。`X-Sales-Person-Id` ヘッダーは不要かつ無視される。サーバーはSupabase Authのセッションを検証し、対応する `SALES_PERSON`（`auth_user_id` で紐付け）を「現在のユーザー」として解釈する。未ログインの場合は401 `UNAUTHENTICATED`。ただし `GET /api/sales-persons` のみ、未ログインでも呼び出し可能とする。
+- **未移行**（Stage 3/3で対応予定）: 顧客マスタAPI（4章）。引き続き以下の方式。
 
 ```
 X-Sales-Person-Id: <int>
 ```
 
-- サーバーはこの値を `SALES_PERSON.sales_person_id` として解釈し、以降の権限判定（`is_manager` の確認等）に用いる。クライアントが値を偽装できてしまう既知の問題があり、Issue #78 Stage 2/3で移行予定。
-- 例外として `GET /api/sales-persons` のみ、このヘッダーが無くても呼び出し可能とする。
+- サーバーはこの値を `SALES_PERSON.sales_person_id` として解釈し、以降の権限判定に用いる。クライアントが値を偽装できてしまう既知の問題があり、Issue #78 Stage 3/3で移行予定。
 
 ### 1.3 権限エラーの扱い
 
@@ -82,9 +81,11 @@ X-Sales-Person-Id: <int>
 
 ## 3. 営業マスタ API
 
+3.1を除く全エンドポイントは、Supabase Authのログインセッション（cookie）で「現在のユーザー」を識別する（1.2参照）。未ログインの場合は401 `UNAUTHENTICATED`。
+
 ### 3.1 GET /api/sales-persons
 
-一覧取得。`X-Sales-Person-Id` 不要。
+一覧取得。未ログインでも呼び出し可能（1.2参照）。
 
 **レスポンス 200**
 
@@ -393,7 +394,7 @@ X-Sales-Person-Id: <int>
 
 ## 7. 今後の検討事項
 
-- 営業マスタAPI（3章）・顧客マスタAPI（4章）も `X-Sales-Person-Id` ヘッダーからSupabase Authのログインセッションへ移行する（Issue #78 Stage 2/3。日報・コメントAPIは移行済み、1.2参照）。
+- 顧客マスタAPI（4章）も `X-Sales-Person-Id` ヘッダーからSupabase Authのログインセッションへ移行する（Issue #78 Stage 3/3。日報・コメント・営業マスタAPIは移行済み、1.2参照）。
 - データ量増加時のページネーション追加（一覧系エンドポイント）。
 - 日報・コメントの削除/編集が必要になった場合のエンドポイント追加。
 - マスタ管理を上長限定にする場合、`is_manager` チェックを3章・4章のPOST/PUT/DELETEに追加する。

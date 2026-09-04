@@ -1,11 +1,12 @@
 // 営業マスタ API: 一覧取得・登録
 // 参照: docs/api-specification.md 3.1 GET /api/sales-persons / 3.3 POST /api/sales-persons
+// 認証(POST): Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 2/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   mapSalesPersonPrismaError,
   salesPersonBodySchema,
@@ -18,7 +19,7 @@ registry.registerPath({
   method: "get",
   path: "/sales-persons",
   summary: "営業担当者一覧取得",
-  description: "X-Sales-Person-Id ヘッダー無しでも呼び出し可能な唯一の例外。",
+  description: "未ログインでも呼び出し可能な唯一の例外。",
   responses: {
     200: {
       description: "営業担当者一覧",
@@ -31,8 +32,8 @@ registry.registerPath({
   method: "post",
   path: "/sales-persons",
   summary: "営業担当者登録",
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
   request: {
-    headers: z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam }),
     body: { content: { "application/json": { schema: salesPersonBodySchema } } },
   },
   responses: {
@@ -63,7 +64,7 @@ export const GET = withApiHandler(async () => {
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  await getCurrentSalesPerson(request);
+  await getCurrentSalesPersonFromSession();
 
   const body = await parseJsonBody(request, salesPersonBodySchema);
 

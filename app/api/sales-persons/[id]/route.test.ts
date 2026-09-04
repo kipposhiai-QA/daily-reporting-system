@@ -12,9 +12,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { DELETE, GET, PUT } from "./route";
 
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findUniqueMock = vi.mocked(prisma.salesPerson.findUnique);
 const updateMock = vi.mocked(prisma.salesPerson.update);
 const deleteMock = vi.mocked(prisma.salesPerson.delete);
@@ -25,6 +31,7 @@ const YAMADA = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
@@ -32,24 +39,17 @@ const YAMADA = {
 const CURRENT_USER = YAMADA;
 
 beforeEach(() => {
+  getSalesPersonFromSessionMock.mockReset();
   findUniqueMock.mockReset();
   updateMock.mockReset();
   deleteMock.mockReset();
 });
 
-function withAuthHeader(headers: Record<string, string> = {}): Record<string, string> {
-  return { "X-Sales-Person-Id": "1", ...headers };
-}
-
-function makeRequest(
-  method: string,
-  body?: unknown,
-  headers?: Record<string, string>,
-): NextRequest {
+function makeRequest(method: string, body?: unknown): NextRequest {
   return new NextRequest("http://localhost/api/sales-persons/1", {
     method,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
@@ -58,27 +58,26 @@ function ctx(id: string) {
 }
 
 describe("GET /api/sales-persons/:id", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await GET(makeRequest("GET"), ctx("1"));
     expect(response.status).toBe(401);
   });
 
   it("returns 404 when the sales person does not exist", async () => {
-    // first call resolves current user, second resolves target -> null
-    findUniqueMock
-      .mockResolvedValueOnce(CURRENT_USER as never)
-      .mockResolvedValueOnce(null as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+    findUniqueMock.mockResolvedValue(null as never);
 
-    const response = await GET(makeRequest("GET", undefined, withAuthHeader()), ctx("999"));
+    const response = await GET(makeRequest("GET"), ctx("999"));
     expect(response.status).toBe(404);
   });
 
   it("returns 200 with the sales person detail", async () => {
-    findUniqueMock
-      .mockResolvedValueOnce(CURRENT_USER as never)
-      .mockResolvedValueOnce(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+    findUniqueMock.mockResolvedValue(YAMADA as never);
 
-    const response = await GET(makeRequest("GET", undefined, withAuthHeader()), ctx("1"));
+    const response = await GET(makeRequest("GET"), ctx("1"));
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -89,7 +88,7 @@ describe("GET /api/sales-persons/:id", () => {
 
 describe("PUT /api/sales-persons/:id", () => {
   it("returns 404 when updating a non-existent sales person", async () => {
-    findUniqueMock.mockResolvedValueOnce(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Record not found", {
         code: "P2025",
@@ -98,7 +97,7 @@ describe("PUT /api/sales-persons/:id", () => {
     );
 
     const response = await PUT(
-      makeRequest("PUT", { name: "山田次郎", email: "yamada2@example.com" }, withAuthHeader()),
+      makeRequest("PUT", { name: "山田次郎", email: "yamada2@example.com" }),
       ctx("999"),
     );
 
@@ -106,7 +105,7 @@ describe("PUT /api/sales-persons/:id", () => {
   });
 
   it("returns 409 when the email collides with another record", async () => {
-    findUniqueMock.mockResolvedValueOnce(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -115,7 +114,7 @@ describe("PUT /api/sales-persons/:id", () => {
     );
 
     const response = await PUT(
-      makeRequest("PUT", { name: "山田太郎", email: "tanaka@example.com" }, withAuthHeader()),
+      makeRequest("PUT", { name: "山田太郎", email: "tanaka@example.com" }),
       ctx("1"),
     );
 
@@ -123,15 +122,16 @@ describe("PUT /api/sales-persons/:id", () => {
   });
 
   it("updates and returns 200 on success", async () => {
-    findUniqueMock.mockResolvedValueOnce(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockResolvedValue({ ...YAMADA, name: "山田次郎" } as never);
 
     const response = await PUT(
-      makeRequest(
-        "PUT",
-        { name: "山田次郎", email: "yamada@example.com", department: "営業1課", is_manager: false },
-        withAuthHeader(),
-      ),
+      makeRequest("PUT", {
+        name: "山田次郎",
+        email: "yamada@example.com",
+        department: "営業1課",
+        is_manager: false,
+      }),
       ctx("1"),
     );
 
@@ -150,7 +150,7 @@ describe("PUT /api/sales-persons/:id", () => {
 
 describe("DELETE /api/sales-persons/:id", () => {
   it("returns 409 when the sales person is referenced by reports or comments", async () => {
-    findUniqueMock.mockResolvedValueOnce(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     deleteMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Foreign key constraint failed", {
         code: "P2003",
@@ -158,7 +158,7 @@ describe("DELETE /api/sales-persons/:id", () => {
       }),
     );
 
-    const response = await DELETE(makeRequest("DELETE", undefined, withAuthHeader()), ctx("1"));
+    const response = await DELETE(makeRequest("DELETE"), ctx("1"));
 
     expect(response.status).toBe(409);
     const body = await response.json();
@@ -168,10 +168,10 @@ describe("DELETE /api/sales-persons/:id", () => {
   });
 
   it("returns 204 on successful deletion", async () => {
-    findUniqueMock.mockResolvedValueOnce(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     deleteMock.mockResolvedValue(YAMADA as never);
 
-    const response = await DELETE(makeRequest("DELETE", undefined, withAuthHeader()), ctx("2"));
+    const response = await DELETE(makeRequest("DELETE"), ctx("2"));
 
     expect(response.status).toBe(204);
   });
