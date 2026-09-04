@@ -3,9 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    salesPerson: {
-      findUnique: vi.fn(),
-    },
     customer: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -13,10 +10,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { GET, POST } from "./route";
 
-const findUniqueSalesPersonMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findManyMock = vi.mocked(prisma.customer.findMany);
 const createMock = vi.mocked(prisma.customer.create);
 
@@ -26,6 +28,7 @@ const CURRENT_USER = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
@@ -42,41 +45,37 @@ const COMPANY_A = {
 };
 
 beforeEach(() => {
-  findUniqueSalesPersonMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
   findManyMock.mockReset();
   createMock.mockReset();
 });
 
-function withAuthHeader(headers: Record<string, string> = {}): Record<string, string> {
-  return { "X-Sales-Person-Id": "1", ...headers };
+function getRequest(url: string): NextRequest {
+  return new NextRequest(url, { headers: { "content-type": "application/json" } });
 }
 
-function getRequest(url: string, headers?: Record<string, string>): NextRequest {
-  return new NextRequest(url, { headers: { "content-type": "application/json", ...headers } });
-}
-
-function postRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/customers", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
 describe("GET /api/customers", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await GET(getRequest("http://localhost/api/customers"));
     expect(response.status).toBe(401);
     expect(findManyMock).not.toHaveBeenCalled();
   });
 
   it("filters by company_name using a partial match", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     findManyMock.mockResolvedValue([COMPANY_A] as never);
 
-    const response = await GET(
-      getRequest("http://localhost/api/customers?company_name=A社", withAuthHeader()),
-    );
+    const response = await GET(getRequest("http://localhost/api/customers?company_name=A社"));
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith({
@@ -99,10 +98,10 @@ describe("GET /api/customers", () => {
   });
 
   it("returns all customers when company_name is omitted", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     findManyMock.mockResolvedValue([COMPANY_A] as never);
 
-    const response = await GET(getRequest("http://localhost/api/customers", withAuthHeader()));
+    const response = await GET(getRequest("http://localhost/api/customers"));
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith({
@@ -113,16 +112,18 @@ describe("GET /api/customers", () => {
 });
 
 describe("POST /api/customers", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await POST(postRequest({ company_name: "株式会社C社" }));
     expect(response.status).toBe(401);
     expect(createMock).not.toHaveBeenCalled();
   });
 
   it("returns 422 when company_name is missing", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
 
-    const response = await POST(postRequest({}, withAuthHeader()));
+    const response = await POST(postRequest({}));
 
     expect(response.status).toBe(422);
     const body = await response.json();
@@ -131,7 +132,7 @@ describe("POST /api/customers", () => {
   });
 
   it("creates a customer with only company_name and returns 201", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(CURRENT_USER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     createMock.mockResolvedValue({
       ...COMPANY_A,
       contact_person: null,
@@ -140,7 +141,7 @@ describe("POST /api/customers", () => {
       address: null,
     } as never);
 
-    const response = await POST(postRequest({ company_name: "株式会社A社" }, withAuthHeader()));
+    const response = await POST(postRequest({ company_name: "株式会社A社" }));
 
     expect(response.status).toBe(201);
     expect(createMock).toHaveBeenCalledWith({

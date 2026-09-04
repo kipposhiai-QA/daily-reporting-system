@@ -1,9 +1,8 @@
 // Supabase Authのセッションから、対応する営業マスタ(SalesPerson)レコードを解決する。
 // 参照: Issue #62（ログイン中のユーザー情報を各画面のAPI呼び出しで使う仕組みを追加する）
 //
-// docs/api-specification.md の X-Sales-Person-Id ヘッダー（疑似認証）とは別軸の仕組み。
-// lib/api/auth.ts の getCurrentSalesPerson はそのヘッダーを読むためのもので、こちらは
-// フロントエンドがヘッダーに設定すべき sales_person_id を決めるための、ログインセッション側の解決に使う。
+// lib/api/auth.ts の getCurrentSalesPersonFromSession はこの関数をそのまま利用する
+// 薄いラッパー（参照: Issue #78）。GET /api/auth/me（フロントエンドの画面表示用）も同様に使う。
 import type { SalesPerson } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";

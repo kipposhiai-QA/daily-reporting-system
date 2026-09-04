@@ -60,7 +60,7 @@
 - 「上長としてログイン」＝ 鈴木一郎（sales_person_id=5, is_manager=true）としてログインした状態
 - 「別営業としてログイン」＝ 田中花子（sales_person_id=2, is_manager=false）としてログインした状態
 
-日報API（4.3）・コメントAPI（4.4）・営業マスタAPI（4.1）はSupabase Authのログインセッションで識別する（api-specification.md 1.2参照。Issue #78 Stage 1/3・Stage 2/3で移行済み）。顧客マスタAPI（4.2）は移行前のため、引き続き `X-Sales-Person-Id` ヘッダーで対象の sales_person_id を指定する。
+全APIはSupabase Authのログインセッションで識別する（api-specification.md 1.2参照）。
 
 ---
 
@@ -153,28 +153,28 @@
 
 ### 4.3 日報 API
 
-| ID            | 観点                            | 事前条件                                            | リクエスト                                                                               | 期待結果                                                              |
-| ------------- | ------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| TC-API-RPT-01 | ヘッダー必須                    | -                                                   | `GET /api/reports`（ヘッダー無し）                                                       | 401 `UNAUTHENTICATED`                                                 |
-| TC-API-RPT-02 | 営業は自分の分のみ（DRAFT含む） | 前提データ通り                                      | `X-Sales-Person-Id: 1` で `GET /api/reports`                                             | report_id=10, 11のみ返る                                              |
-| TC-API-RPT-03 | 上長はSUBMITTEDのみ全員分       | 前提データ通り                                      | `X-Sales-Person-Id: 5` で `GET /api/reports`                                             | report_id=10のみ返る（11は含まれない）                                |
-| TC-API-RPT-04 | 上長：sales_person_id絞り込み   | 複数営業のSUBMITTEDが存在                           | `X-Sales-Person-Id: 5` で `GET /api/reports?sales_person_id=1`                           | sales_person_id=1のSUBMITTEDのみ返る                                  |
-| TC-API-RPT-05 | DRAFTへの他者アクセス拒否       | report_id=11はDRAFT、作成者は1                      | `X-Sales-Person-Id: 5` で `GET /api/reports/11`                                          | 403 `FORBIDDEN`                                                       |
-| TC-API-RPT-06 | SUBMITTEDへの上長アクセス許可   | report_id=10はSUBMITTED                             | `X-Sales-Person-Id: 5` で `GET /api/reports/10`                                          | 200、訪問記録・コメントを含めて返る                                   |
-| TC-API-RPT-07 | 提出時の訪問記録必須            | -                                                   | `X-Sales-Person-Id: 1` で `POST /api/reports` `{status: "SUBMITTED", visit_records: []}` | 422 `VALIDATION_ERROR`                                                |
-| TC-API-RPT-08 | 下書きは0件許可                 | -                                                   | `X-Sales-Person-Id: 1` で `POST /api/reports` `{status: "DRAFT", visit_records: []}`     | 201                                                                   |
-| TC-API-RPT-09 | 日付重複                        | report_id=10（sales_person_id=1, 2026-08-25）が既存 | `X-Sales-Person-Id: 1` で `POST /api/reports` `{report_date: "2026-08-25", ...}`         | 409 `CONFLICT`                                                        |
-| TC-API-RPT-10 | 作成者以外の更新拒否            | report_id=10の作成者はid=1                          | `X-Sales-Person-Id: 2` で `PUT /api/reports/10`                                          | 403 `FORBIDDEN`                                                       |
-| TC-API-RPT-11 | 訪問記録の全置換                | report_id=10に訪問記録2件が既存                     | `X-Sales-Person-Id: 1` で `PUT /api/reports/10` `{visit_records: [1件のみ]}`             | 200、更新後は訪問記録が1件のみになっている（残り1件は削除されている） |
+| ID            | 観点                            | 事前条件                                            | リクエスト                                                                          | 期待結果                                                              |
+| ------------- | ------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| TC-API-RPT-01 | 未ログインは拒否                | -                                                   | 未ログイン状態で `GET /api/reports`                                                 | 401 `UNAUTHENTICATED`                                                 |
+| TC-API-RPT-02 | 営業は自分の分のみ（DRAFT含む） | 前提データ通り                                      | 営業としてログインし `GET /api/reports`                                             | report_id=10, 11のみ返る                                              |
+| TC-API-RPT-03 | 上長はSUBMITTEDのみ全員分       | 前提データ通り                                      | 上長としてログインし `GET /api/reports`                                             | report_id=10のみ返る（11は含まれない）                                |
+| TC-API-RPT-04 | 上長：sales_person_id絞り込み   | 複数営業のSUBMITTEDが存在                           | 上長としてログインし `GET /api/reports?sales_person_id=1`                           | sales_person_id=1のSUBMITTEDのみ返る                                  |
+| TC-API-RPT-05 | DRAFTへの他者アクセス拒否       | report_id=11はDRAFT、作成者は1                      | 上長としてログインし `GET /api/reports/11`                                          | 403 `FORBIDDEN`                                                       |
+| TC-API-RPT-06 | SUBMITTEDへの上長アクセス許可   | report_id=10はSUBMITTED                             | 上長としてログインし `GET /api/reports/10`                                          | 200、訪問記録・コメントを含めて返る                                   |
+| TC-API-RPT-07 | 提出時の訪問記録必須            | -                                                   | 営業としてログインし `POST /api/reports` `{status: "SUBMITTED", visit_records: []}` | 422 `VALIDATION_ERROR`                                                |
+| TC-API-RPT-08 | 下書きは0件許可                 | -                                                   | 営業としてログインし `POST /api/reports` `{status: "DRAFT", visit_records: []}`     | 201                                                                   |
+| TC-API-RPT-09 | 日付重複                        | report_id=10（sales_person_id=1, 2026-08-25）が既存 | 営業としてログインし `POST /api/reports` `{report_date: "2026-08-25", ...}`         | 409 `CONFLICT`                                                        |
+| TC-API-RPT-10 | 作成者以外の更新拒否            | report_id=10の作成者はid=1                          | 別営業としてログインし `PUT /api/reports/10`                                        | 403 `FORBIDDEN`                                                       |
+| TC-API-RPT-11 | 訪問記録の全置換                | report_id=10に訪問記録2件が既存                     | 営業としてログインし `PUT /api/reports/10` `{visit_records: [1件のみ]}`             | 200、更新後は訪問記録が1件のみになっている（残り1件は削除されている） |
 
 ### 4.4 コメント API
 
-| ID            | 観点                   | 事前条件                | リクエスト                                                                          | 期待結果                    |
-| ------------- | ---------------------- | ----------------------- | ----------------------------------------------------------------------------------- | --------------------------- |
-| TC-API-CMT-01 | 営業によるコメント拒否 | report_id=10はSUBMITTED | `X-Sales-Person-Id: 1`（is_manager=false）で `POST /api/reports/10/comments`        | 403 `FORBIDDEN`             |
-| TC-API-CMT-02 | DRAFTへのコメント拒否  | report_id=11はDRAFT     | `X-Sales-Person-Id: 5` で `POST /api/reports/11/comments`                           | 403 `FORBIDDEN`             |
-| TC-API-CMT-03 | 上長のコメント投稿成功 | report_id=10はSUBMITTED | `X-Sales-Person-Id: 5` で `POST /api/reports/10/comments` `{comment: "確認します"}` | 201、登録したコメントが返る |
-| TC-API-CMT-04 | 必須項目欠如           | report_id=10はSUBMITTED | `X-Sales-Person-Id: 5` で `POST /api/reports/10/comments` `{}`                      | 422 `VALIDATION_ERROR`      |
+| ID            | 観点                   | 事前条件                | リクエスト                                                                     | 期待結果                    |
+| ------------- | ---------------------- | ----------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| TC-API-CMT-01 | 営業によるコメント拒否 | report_id=10はSUBMITTED | 営業としてログインし `POST /api/reports/10/comments`                           | 403 `FORBIDDEN`             |
+| TC-API-CMT-02 | DRAFTへのコメント拒否  | report_id=11はDRAFT     | 上長としてログインし `POST /api/reports/11/comments`                           | 403 `FORBIDDEN`             |
+| TC-API-CMT-03 | 上長のコメント投稿成功 | report_id=10はSUBMITTED | 上長としてログインし `POST /api/reports/10/comments` `{comment: "確認します"}` | 201、登録したコメントが返る |
+| TC-API-CMT-04 | 必須項目欠如           | report_id=10はSUBMITTED | 上長としてログインし `POST /api/reports/10/comments` `{}`                      | 422 `VALIDATION_ERROR`      |
 
 ---
 

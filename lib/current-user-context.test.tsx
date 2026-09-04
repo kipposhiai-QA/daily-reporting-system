@@ -1,6 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getStoredSalesPersonId } from "./api-client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CurrentUserProvider, useCurrentUser } from "./current-user-context";
 
 const YAMADA = {
@@ -53,10 +52,6 @@ function mockFetch({
   );
 }
 
-beforeEach(() => {
-  window.localStorage.clear();
-});
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -85,7 +80,6 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     expect(result.current.currentUser?.sales_person_id).toBe(1);
     expect(result.current.isManager).toBe(false);
     expect(result.current.salesPersons).toEqual([YAMADA, SUZUKI_MANAGER]);
-    expect(getStoredSalesPersonId()).toBe(1);
     expect(result.current.error).toBeNull();
   });
 
@@ -114,7 +108,6 @@ describe("CurrentUserProvider / useCurrentUser", () => {
     result.current.selectSalesPersonId(5);
 
     expect(result.current.currentUser?.sales_person_id).toBe(1);
-    expect(getStoredSalesPersonId()).toBe(1);
   });
 
   it("sets an error message when the sales-persons list fetch fails", async () => {
@@ -154,7 +147,6 @@ describe("CurrentUserProvider / useCurrentUser", () => {
 
     expect(result.current.error).toBe("ログインしていません");
     expect(result.current.currentUser).toBeNull();
-    expect(getStoredSalesPersonId()).toBeNull();
   });
 
   it("re-resolves the current user via refresh() after the session changes (Issue #66)", async () => {
@@ -175,6 +167,5 @@ describe("CurrentUserProvider / useCurrentUser", () => {
 
     await waitFor(() => expect(result.current.currentUser?.sales_person_id).toBe(1));
     expect(result.current.error).toBeNull();
-    expect(getStoredSalesPersonId()).toBe(1);
   });
 });
