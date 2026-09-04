@@ -3,15 +3,6 @@ import { NextRequest } from "next/server";
 import type { SalesPerson } from "@/generated/prisma/client";
 
 /**
- * @deprecated X-Sales-Person-Id ヘッダーは移行が完了していないルート（customers/sales-persons、
- * Issue #78 Stage 2/3）でのみ使う。移行済みのルート（reports/comments）は
- * mockSalesPersonSession（このファイル）で Supabase Authセッションをモックすること。
- */
-export function authHeaders(salesPersonId?: number): Record<string, string> {
-  return salesPersonId === undefined ? {} : { "X-Sales-Person-Id": String(salesPersonId) };
-}
-
-/**
  * docs/test-specification.md 2.2 共通シードデータの sales_person_id → SalesPerson。
  * getSalesPersonFromSession() のモック戻り値を組み立てるのに使う。
  * lib/api/auth.ts の getCurrentSalesPersonFromSession は sales_person_id / is_manager
@@ -66,38 +57,30 @@ export function mockSalesPersonSession(salesPersonId?: number): SalesPerson | nu
   return record;
 }
 
-export function getRequest(url: string, headers: Record<string, string> = {}): NextRequest {
-  return new NextRequest(url, { headers: { "content-type": "application/json", ...headers } });
+export function getRequest(url: string): NextRequest {
+  return new NextRequest(url, { headers: { "content-type": "application/json" } });
 }
 
-export function postRequest(
-  url: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-): NextRequest {
+export function postRequest(url: string, body: unknown): NextRequest {
   return new NextRequest(url, {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
-export function putRequest(
-  url: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-): NextRequest {
+export function putRequest(url: string, body: unknown): NextRequest {
   return new NextRequest(url, {
     method: "PUT",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
-export function deleteRequest(url: string, headers: Record<string, string> = {}): NextRequest {
+export function deleteRequest(url: string): NextRequest {
   return new NextRequest(url, {
     method: "DELETE",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 

@@ -1,36 +1,16 @@
-import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getCurrentSalesPerson, getCurrentSalesPersonFromSession, requireManager } from "./auth";
+import { getCurrentSalesPersonFromSession, requireManager } from "./auth";
 import { ApiError } from "./errors";
-
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    salesPerson: {
-      findUnique: vi.fn(),
-    },
-  },
-}));
 
 vi.mock("@/lib/supabase/current-sales-person", () => ({
   getSalesPersonFromSession: vi.fn(),
 }));
 
-import { prisma } from "@/lib/prisma";
 import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 
-const findUniqueMock = vi.mocked(prisma.salesPerson.findUnique);
 const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 
-function requestWithHeader(value: string | undefined): NextRequest {
-  const headers = new Headers();
-  if (value !== undefined) {
-    headers.set("X-Sales-Person-Id", value);
-  }
-  return new NextRequest("http://localhost/api/reports", { headers });
-}
-
 beforeEach(() => {
-  findUniqueMock.mockReset();
   getSalesPersonFromSessionMock.mockReset();
 });
 
@@ -50,45 +30,6 @@ describe("getCurrentSalesPersonFromSession", () => {
     } as Awaited<ReturnType<typeof getSalesPersonFromSessionMock>>);
 
     await expect(getCurrentSalesPersonFromSession()).resolves.toEqual({
-      salesPersonId: 5,
-      isManager: true,
-    });
-  });
-});
-
-describe("getCurrentSalesPerson", () => {
-  it("throws UNAUTHENTICATED when the header is missing", async () => {
-    await expect(getCurrentSalesPerson(requestWithHeader(undefined))).rejects.toMatchObject({
-      code: "UNAUTHENTICATED",
-    } satisfies Partial<ApiError>);
-    expect(findUniqueMock).not.toHaveBeenCalled();
-  });
-
-  it("throws UNAUTHENTICATED when the header is not a number", async () => {
-    await expect(getCurrentSalesPerson(requestWithHeader("abc"))).rejects.toMatchObject({
-      code: "UNAUTHENTICATED",
-    });
-  });
-
-  it("throws UNAUTHENTICATED when no matching sales person exists", async () => {
-    findUniqueMock.mockResolvedValue(null);
-
-    await expect(getCurrentSalesPerson(requestWithHeader("999"))).rejects.toMatchObject({
-      code: "UNAUTHENTICATED",
-    });
-    expect(findUniqueMock).toHaveBeenCalledWith({
-      where: { sales_person_id: 999 },
-      select: { sales_person_id: true, is_manager: true },
-    });
-  });
-
-  it("returns the resolved sales person for a valid header", async () => {
-    findUniqueMock.mockResolvedValue({
-      sales_person_id: 5,
-      is_manager: true,
-    } as Awaited<ReturnType<typeof findUniqueMock>>);
-
-    await expect(getCurrentSalesPerson(requestWithHeader("5"))).resolves.toEqual({
       salesPersonId: 5,
       isManager: true,
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ApiClientError, apiClient, setStoredSalesPersonId } from "@/lib/api-client";
+import { ApiClientError, apiClient } from "@/lib/api-client";
 import type { SalesPersonResponse } from "@/lib/api/schemas/sales-person";
 
 interface CurrentUserContextValue {
@@ -31,10 +31,10 @@ const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
 
 /**
  * アプリ全体で「現在のユーザー」を保持するプロバイダ。
- * 初回マウント時に GET /api/sales-persons（一覧・ヘッダー不要）と GET /api/auth/me
+ * 初回マウント時に GET /api/sales-persons（一覧・未ログインでも取得可）と GET /api/auth/me
  * （ログイン中のSupabase Authセッションから解決した営業担当者）を取得する。
- * 各画面のAPI呼び出し（lib/api-client.ts）に付与する X-Sales-Person-Id は、
- * ここで解決した currentUser.sales_person_id を自動的に使う。
+ * 各画面のAPI呼び出し（lib/api-client.ts）はSupabase Authのセッションcookieで
+ * 自動的に本人確認されるため、ここで解決した値を明示的に渡す必要はない。
  */
 export function CurrentUserProvider({ children }: { children: React.ReactNode }) {
   const [salesPersons, setSalesPersons] = useState<SalesPersonResponse[]>([]);
@@ -60,10 +60,8 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
 
       if (currentUserResult.status === "fulfilled") {
         setCurrentUser(currentUserResult.value);
-        setStoredSalesPersonId(currentUserResult.value.sales_person_id);
       } else {
         setCurrentUser(null);
-        setStoredSalesPersonId(null);
         const message =
           currentUserResult.reason instanceof ApiClientError &&
           currentUserResult.reason.code === "UNAUTHENTICATED"
@@ -101,10 +99,8 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
 
     if (currentUserResult.status === "fulfilled") {
       setCurrentUser(currentUserResult.value);
-      setStoredSalesPersonId(currentUserResult.value.sales_person_id);
     } else {
       setCurrentUser(null);
-      setStoredSalesPersonId(null);
       const message =
         currentUserResult.reason instanceof ApiClientError &&
         currentUserResult.reason.code === "UNAUTHENTICATED"

@@ -1,12 +1,13 @@
 // 顧客マスタ API: 詳細取得・更新・削除
 // 参照: docs/api-specification.md 4.2 GET /4.4 PUT /4.5 DELETE /api/customers/:id
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 3/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/errors";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   customerBodySchema,
   customerResponseSchema,
@@ -18,13 +19,13 @@ import { parseIdParam, parseJsonBody } from "@/lib/api/validation";
 type Context = { params: Promise<{ id: string }> };
 
 const pathParamsSchema = z.object({ id: z.string().openapi({ example: "1" }) });
-const headersSchema = z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam });
 
 registry.registerPath({
   method: "get",
   path: "/customers/{id}",
   summary: "顧客詳細取得",
-  request: { params: pathParamsSchema, headers: headersSchema },
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
+  request: { params: pathParamsSchema },
   responses: {
     200: {
       description: "顧客詳細",
@@ -45,9 +46,9 @@ registry.registerPath({
   method: "put",
   path: "/customers/{id}",
   summary: "顧客更新",
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
   request: {
     params: pathParamsSchema,
-    headers: headersSchema,
     body: { content: { "application/json": { schema: customerBodySchema } } },
   },
   responses: {
@@ -74,7 +75,8 @@ registry.registerPath({
   method: "delete",
   path: "/customers/{id}",
   summary: "顧客削除",
-  request: { params: pathParamsSchema, headers: headersSchema },
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
+  request: { params: pathParamsSchema },
   responses: {
     204: { description: "削除成功" },
     401: {
@@ -92,8 +94,8 @@ registry.registerPath({
   },
 });
 
-export const GET = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  await getCurrentSalesPerson(request);
+export const GET = withApiHandler(async (_request: NextRequest, { params }: Context) => {
+  await getCurrentSalesPersonFromSession();
   const { id } = await params;
   const customerId = parseIdParam(id);
 
@@ -106,7 +108,7 @@ export const GET = withApiHandler(async (request: NextRequest, { params }: Conte
 });
 
 export const PUT = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  await getCurrentSalesPerson(request);
+  await getCurrentSalesPersonFromSession();
   const { id } = await params;
   const customerId = parseIdParam(id);
 
@@ -129,8 +131,8 @@ export const PUT = withApiHandler(async (request: NextRequest, { params }: Conte
   }
 });
 
-export const DELETE = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  await getCurrentSalesPerson(request);
+export const DELETE = withApiHandler(async (_request: NextRequest, { params }: Context) => {
+  await getCurrentSalesPersonFromSession();
   const { id } = await params;
   const customerId = parseIdParam(id);
 

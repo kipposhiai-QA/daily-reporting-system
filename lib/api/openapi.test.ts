@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { registry } from "./openapi";
 
 describe("openapi registry", () => {
-  it("generates a valid document containing the common Error schema and auth header parameter", () => {
+  it("generates a valid document containing the common Error schema", () => {
     const generator = new OpenApiGeneratorV3(registry.definitions);
     const document = generator.generateDocument({
       openapi: "3.0.0",
@@ -11,6 +11,5 @@ describe("openapi registry", () => {
     });
 
     expect(document.components?.schemas).toHaveProperty("Error");
-    expect(document.components?.parameters).toHaveProperty("SalesPersonIdHeader");
   });
 });

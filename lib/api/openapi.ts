@@ -30,16 +30,3 @@ export const errorResponseSchema = registry.register(
     }),
   }),
 );
-
-/** 疑似認証ヘッダー（docs/api-specification.md 1.2）。各エンドポイントのrequest.headersで参照する。 */
-export const salesPersonIdHeaderParam = registry.registerParameter(
-  "SalesPersonIdHeader",
-  z.string().openapi({
-    param: {
-      name: "X-Sales-Person-Id",
-      in: "header",
-      required: true,
-    },
-    example: "1",
-  }),
-);

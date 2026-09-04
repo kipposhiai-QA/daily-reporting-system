@@ -1,29 +1,7 @@
 // フロントエンドから /api を呼び出す共通クライアント。
-// 参照: docs/api-specification.md 1.2（X-Sales-Person-Id ヘッダー）
-// 現在の営業担当者IDをlocalStorageから読み取り、全リクエストに自動付与する。
-// このIDは lib/current-user-context.tsx がログイン中のSupabase Authセッション
-// （GET /api/auth/me）から解決した値を書き込む（Issue #62）。
-
-const CURRENT_SALES_PERSON_ID_KEY = "daily-reporting-system:current-sales-person-id";
-
-/** localStorageに保持している現在の営業担当者IDを取得する（SSR時・未選択時はnull）。 */
-export function getStoredSalesPersonId(): number | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(CURRENT_SALES_PERSON_ID_KEY);
-  if (raw === null) return null;
-  const id = Number(raw);
-  return Number.isInteger(id) ? id : null;
-}
-
-/** 現在の営業担当者IDをlocalStorageに保存する。nullで選択解除。 */
-export function setStoredSalesPersonId(id: number | null): void {
-  if (typeof window === "undefined") return;
-  if (id === null) {
-    window.localStorage.removeItem(CURRENT_SALES_PERSON_ID_KEY);
-  } else {
-    window.localStorage.setItem(CURRENT_SALES_PERSON_ID_KEY, String(id));
-  }
-}
+// 全APIエンドポイントはSupabase Authのログインセッション（cookie）で本人を識別する
+// （docs/api-specification.md 1.2、Issue #78）。fetchは同一オリジンへのリクエストに
+// cookieを自動的に付与するため、このクライアント側で識別情報を明示的に付与する必要はない。
 
 export interface ApiErrorDetail {
   field: string;
@@ -54,12 +32,8 @@ export class ApiClientError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const salesPersonId = getStoredSalesPersonId();
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  if (salesPersonId !== null) {
-    headers.set("X-Sales-Person-Id", String(salesPersonId));
-  }
 
   const response = await fetch(`/api${path}`, { ...init, headers });
 

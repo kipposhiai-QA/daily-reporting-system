@@ -1,11 +1,12 @@
 // 顧客マスタ API: 一覧取得（会社名部分一致検索）・登録
 // 参照: docs/api-specification.md 4.1 GET /api/customers / 4.3 POST /api/customers
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 3/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   customerBodySchema,
   customerListQuerySchema,
@@ -14,13 +15,12 @@ import {
 } from "@/lib/api/schemas/customer";
 import { parseJsonBody, parseSearchParams } from "@/lib/api/validation";
 
-const headersSchema = z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam });
-
 registry.registerPath({
   method: "get",
   path: "/customers",
   summary: "顧客一覧取得（会社名検索可）",
-  request: { headers: headersSchema, query: customerListQuerySchema },
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
+  request: { query: customerListQuerySchema },
   responses: {
     200: {
       description: "顧客一覧",
@@ -37,8 +37,8 @@ registry.registerPath({
   method: "post",
   path: "/customers",
   summary: "顧客登録",
+  description: "認証はSupabase Authのログインセッション（cookie）で行う。",
   request: {
-    headers: headersSchema,
     body: { content: { "application/json": { schema: customerBodySchema } } },
   },
   responses: {
@@ -58,7 +58,7 @@ registry.registerPath({
 });
 
 export const GET = withApiHandler(async (request: NextRequest) => {
-  await getCurrentSalesPerson(request);
+  await getCurrentSalesPersonFromSession();
 
   const { company_name } = parseSearchParams(request.nextUrl.searchParams, customerListQuerySchema);
 
@@ -71,7 +71,7 @@ export const GET = withApiHandler(async (request: NextRequest) => {
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  await getCurrentSalesPerson(request);
+  await getCurrentSalesPersonFromSession();
 
   const body = await parseJsonBody(request, customerBodySchema);
 

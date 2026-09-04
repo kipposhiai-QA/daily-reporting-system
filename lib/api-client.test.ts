@@ -1,42 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  ApiClientError,
-  apiClient,
-  getStoredSalesPersonId,
-  setStoredSalesPersonId,
-} from "./api-client";
-
-beforeEach(() => {
-  window.localStorage.clear();
-});
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError, apiClient } from "./api-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe("getStoredSalesPersonId / setStoredSalesPersonId", () => {
-  it("returns null when nothing is stored", () => {
-    expect(getStoredSalesPersonId()).toBeNull();
-  });
-
-  it("round-trips an id through localStorage", () => {
-    setStoredSalesPersonId(5);
-    expect(getStoredSalesPersonId()).toBe(5);
-  });
-
-  it("clears the stored id when set to null", () => {
-    setStoredSalesPersonId(5);
-    setStoredSalesPersonId(null);
-    expect(getStoredSalesPersonId()).toBeNull();
-    expect(
-      window.localStorage.getItem("daily-reporting-system:current-sales-person-id"),
-    ).toBeNull();
-  });
-
-  it("returns null for a corrupted (non-numeric) stored value", () => {
-    window.localStorage.setItem("daily-reporting-system:current-sales-person-id", "not-a-number");
-    expect(getStoredSalesPersonId()).toBeNull();
-  });
 });
 
 function mockFetchOnce(response: { status: number; body?: unknown }) {
@@ -50,18 +16,7 @@ function mockFetchOnce(response: { status: number; body?: unknown }) {
 }
 
 describe("apiClient", () => {
-  it("attaches X-Sales-Person-Id when an id is stored", async () => {
-    setStoredSalesPersonId(1);
-    const fetchMock = mockFetchOnce({ status: 200, body: [] });
-
-    await apiClient.get("/reports");
-
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const headers = init.headers as Headers;
-    expect(headers.get("X-Sales-Person-Id")).toBe("1");
-  });
-
-  it("omits X-Sales-Person-Id when no id is stored", async () => {
+  it("requests the given path under /api with a JSON content type", async () => {
     const fetchMock = mockFetchOnce({ status: 200, body: [] });
 
     await apiClient.get("/sales-persons");
@@ -69,7 +24,7 @@ describe("apiClient", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/sales-persons");
     const headers = init.headers as Headers;
-    expect(headers.has("X-Sales-Person-Id")).toBe(false);
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("returns undefined for a 204 response without parsing a body", async () => {
