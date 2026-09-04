@@ -56,8 +56,8 @@
 
 ### 2.3 凡例
 
-- 「営業としてログイン」＝ `X-Sales-Person-Id: 1`（山田太郎, is_manager=false）を指定 / 画面ではユーザー切替で山田太郎を選択
-- 「上長としてログイン」＝ `X-Sales-Person-Id: 5`（鈴木一郎, is_manager=true）を指定 / 画面ではユーザー切替で鈴木一郎を選択
+- 「営業としてログイン」＝ `X-Sales-Person-Id: 1`（山田太郎, is_manager=false）を指定 / 画面では山田太郎のSupabase Authアカウントでログインした状態
+- 「上長としてログイン」＝ `X-Sales-Person-Id: 5`（鈴木一郎, is_manager=true）を指定 / 画面では鈴木一郎のSupabase Authアカウントでログインした状態
 - 「別営業としてログイン」＝ `X-Sales-Person-Id: 2`（田中花子, is_manager=false）
 
 ---
