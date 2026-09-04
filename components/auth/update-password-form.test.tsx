@@ -97,7 +97,7 @@ describe("UpdatePasswordForm", () => {
     expect(screen.getByRole("link", { name: "ログイン画面へ" })).toHaveAttribute("href", "/login");
   });
 
-  it("shows an error message when Supabase Auth returns an error (e.g. expired link)", async () => {
+  it("shows the link-expired message when Supabase Auth returns an error without a recognized code (e.g. invalid session)", async () => {
     updateUser.mockResolvedValue({
       data: null,
       error: { name: "AuthApiError", message: "Auth session missing" },
@@ -111,6 +111,42 @@ describe("UpdatePasswordForm", () => {
       await screen.findByText(
         "パスワードの更新に失敗しました。リンクの有効期限が切れている可能性があります。もう一度パスワード再設定をお試しください",
       ),
+    ).toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("shows a same-password message when Supabase Auth returns the same_password error code", async () => {
+    updateUser.mockResolvedValue({
+      data: null,
+      error: {
+        name: "AuthApiError",
+        message: "New password should be different",
+        code: "same_password",
+      },
+    });
+    const user = userEvent.setup();
+    render(<UpdatePasswordForm />);
+
+    await fillAndSubmit(user, "newpassword1", "newpassword1");
+
+    expect(
+      await screen.findByText("新しいパスワードは現在のパスワードと異なるものにしてください"),
+    ).toBeInTheDocument();
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it("shows a weak-password message when Supabase Auth returns the weak_password error code", async () => {
+    updateUser.mockResolvedValue({
+      data: null,
+      error: { name: "AuthApiError", message: "Password is too weak", code: "weak_password" },
+    });
+    const user = userEvent.setup();
+    render(<UpdatePasswordForm />);
+
+    await fillAndSubmit(user, "newpassword1", "newpassword1");
+
+    expect(
+      await screen.findByText("パスワードの強度が不足しています。別のパスワードを入力してください"),
     ).toBeInTheDocument();
     expect(signOut).not.toHaveBeenCalled();
   });
