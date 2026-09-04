@@ -56,9 +56,11 @@
 
 ### 2.3 凡例
 
-- 「営業としてログイン」＝ `X-Sales-Person-Id: 1`（山田太郎, is_manager=false）を指定 / 画面では山田太郎のSupabase Authアカウントでログインした状態
-- 「上長としてログイン」＝ `X-Sales-Person-Id: 5`（鈴木一郎, is_manager=true）を指定 / 画面では鈴木一郎のSupabase Authアカウントでログインした状態
-- 「別営業としてログイン」＝ `X-Sales-Person-Id: 2`（田中花子, is_manager=false）
+- 「営業としてログイン」＝ 山田太郎（sales_person_id=1, is_manager=false）としてログインした状態
+- 「上長としてログイン」＝ 鈴木一郎（sales_person_id=5, is_manager=true）としてログインした状態
+- 「別営業としてログイン」＝ 田中花子（sales_person_id=2, is_manager=false）としてログインした状態
+
+日報API（4.3）・コメントAPI（4.4）はSupabase Authのログインセッションで識別する（api-specification.md 1.2参照。Issue #78 Stage 1/3で移行済み）。営業マスタAPI（4.1）・顧客マスタAPI（4.2）は移行前のため、引き続き `X-Sales-Person-Id` ヘッダーで対象の sales_person_id を指定する。
 
 ---
 

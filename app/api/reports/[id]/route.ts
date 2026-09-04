@@ -1,13 +1,14 @@
 // 日報 API: 詳細取得（訪問記録・コメントを含む）・更新
 // 参照: docs/api-specification.md 5.2 GET /api/reports/:id / 5.4 PUT /api/reports/:id
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 1/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { parseDateOnly, parseTimeOnly } from "@/lib/api/datetime";
 import { ApiError } from "@/lib/api/errors";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   mapReportPrismaError,
   reportBodySchema,
@@ -20,15 +21,14 @@ import { parseIdParam, parseJsonBody } from "@/lib/api/validation";
 type Context = { params: Promise<{ id: string }> };
 
 const pathParamsSchema = z.object({ id: z.string().openapi({ example: "10" }) });
-const headersSchema = z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam });
 
 registry.registerPath({
   method: "get",
   path: "/reports/{id}",
   summary: "日報詳細取得（訪問記録・コメント含む）",
   description:
-    "DRAFTは作成者本人のみアクセス可。SUBMITTEDは作成者本人または上長がアクセス可。それ以外は403。",
-  request: { params: pathParamsSchema, headers: headersSchema },
+    "DRAFTは作成者本人のみアクセス可。SUBMITTEDは作成者本人または上長がアクセス可。それ以外は403。認証はSupabase Authのログインセッション（cookie）で行う。",
+  request: { params: pathParamsSchema },
   responses: {
     200: {
       description: "日報詳細",
@@ -49,8 +49,8 @@ registry.registerPath({
   },
 });
 
-export const GET = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  const current = await getCurrentSalesPerson(request);
+export const GET = withApiHandler(async (_request: NextRequest, { params }: Context) => {
+  const current = await getCurrentSalesPersonFromSession();
   const { id } = await params;
   const reportId = parseIdParam(id);
 
@@ -80,7 +80,6 @@ registry.registerPath({
     "作成者本人のみ許可。visit_recordsは送信内容で全置換する（既存の訪問記録は一旦削除し、送信された配列で作り直す）。",
   request: {
     params: pathParamsSchema,
-    headers: headersSchema,
     body: { content: { "application/json": { schema: reportBodySchema } } },
   },
   responses: {
@@ -112,7 +111,7 @@ registry.registerPath({
 });
 
 export const PUT = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  const current = await getCurrentSalesPerson(request);
+  const current = await getCurrentSalesPersonFromSession();
   const { id } = await params;
   const reportId = parseIdParam(id);
 

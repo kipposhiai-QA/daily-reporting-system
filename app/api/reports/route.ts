@@ -1,12 +1,13 @@
 // 日報 API: 一覧取得（権限によりスコープが変化する）・新規作成
 // 参照: docs/api-specification.md 5.1 GET /api/reports / 5.3 POST /api/reports
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 1/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { parseDateOnly, parseTimeOnly } from "@/lib/api/datetime";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   mapReportPrismaError,
   reportBodySchema,
@@ -19,15 +20,13 @@ import {
 } from "@/lib/api/schemas/report";
 import { parseJsonBody, parseSearchParams } from "@/lib/api/validation";
 
-const headersSchema = z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam });
-
 registry.registerPath({
   method: "get",
   path: "/reports",
   summary: "日報一覧取得（権限によりスコープ変化）",
   description:
-    "営業は自分が作成した日報のみ（DRAFT/SUBMITTED両方）。上長はSUBMITTEDのみ全営業分（sales_person_idで絞り込み可）。",
-  request: { headers: headersSchema, query: reportListQuerySchema },
+    "営業は自分が作成した日報のみ（DRAFT/SUBMITTED両方）。上長はSUBMITTEDのみ全営業分（sales_person_idで絞り込み可）。認証はSupabase Authのログインセッション（cookie）で行う。",
+  request: { query: reportListQuerySchema },
   responses: {
     200: {
       description: "日報一覧",
@@ -41,7 +40,7 @@ registry.registerPath({
 });
 
 export const GET = withApiHandler(async (request: NextRequest) => {
-  const current = await getCurrentSalesPerson(request);
+  const current = await getCurrentSalesPersonFromSession();
   const query = parseSearchParams(request.nextUrl.searchParams, reportListQuerySchema);
 
   const dateFilter =
@@ -79,9 +78,9 @@ registry.registerPath({
   method: "post",
   path: "/reports",
   summary: "日報新規作成（下書き/提出）",
-  description: "作成者はヘッダーのX-Sales-Person-Idを使用する。ボディのsales_person_idは無視する。",
+  description:
+    "作成者はSupabase Authのログインセッションから解決する。ボディのsales_person_idは不要かつ無視する。",
   request: {
-    headers: headersSchema,
     body: { content: { "application/json": { schema: reportBodySchema } } },
   },
   responses: {
@@ -105,7 +104,7 @@ registry.registerPath({
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  const current = await getCurrentSalesPerson(request);
+  const current = await getCurrentSalesPersonFromSession();
   const body = await parseJsonBody(request, reportBodySchema);
 
   try {
