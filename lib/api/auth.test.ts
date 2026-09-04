@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getCurrentSalesPerson, requireManager } from "./auth";
+import { getCurrentSalesPerson, getCurrentSalesPersonFromSession, requireManager } from "./auth";
 import { ApiError } from "./errors";
 
 vi.mock("@/lib/prisma", () => ({
@@ -11,9 +11,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 
 const findUniqueMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 
 function requestWithHeader(value: string | undefined): NextRequest {
   const headers = new Headers();
@@ -25,6 +31,29 @@ function requestWithHeader(value: string | undefined): NextRequest {
 
 beforeEach(() => {
   findUniqueMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
+});
+
+describe("getCurrentSalesPersonFromSession", () => {
+  it("throws UNAUTHENTICATED when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
+    await expect(getCurrentSalesPersonFromSession()).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    } satisfies Partial<ApiError>);
+  });
+
+  it("returns the sales person resolved from the session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue({
+      sales_person_id: 5,
+      is_manager: true,
+    } as Awaited<ReturnType<typeof getSalesPersonFromSessionMock>>);
+
+    await expect(getCurrentSalesPersonFromSession()).resolves.toEqual({
+      salesPersonId: 5,
+      isManager: true,
+    });
+  });
 });
 
 describe("getCurrentSalesPerson", () => {

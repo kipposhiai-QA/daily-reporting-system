@@ -4,9 +4,6 @@ import { Prisma } from "@/generated/prisma/client";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    salesPerson: {
-      findUnique: vi.fn(),
-    },
     dailyReport: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -14,10 +11,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { GET, POST } from "./route";
 
-const findUniqueSalesPersonMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findManyMock = vi.mocked(prisma.dailyReport.findMany);
 const createMock = vi.mocked(prisma.dailyReport.create);
 
@@ -27,6 +29,7 @@ const YAMADA = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
@@ -75,37 +78,37 @@ const CREATED_REPORT = {
 };
 
 beforeEach(() => {
-  findUniqueSalesPersonMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
   findManyMock.mockReset();
   createMock.mockReset();
 });
 
-function getRequest(url: string, headers?: Record<string, string>): NextRequest {
-  return new NextRequest(url, { headers: { "content-type": "application/json", ...headers } });
+function getRequest(url: string): NextRequest {
+  return new NextRequest(url, { headers: { "content-type": "application/json" } });
 }
 
-function postRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/reports", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
 describe("GET /api/reports", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await GET(getRequest("http://localhost/api/reports"));
     expect(response.status).toBe(401);
     expect(findManyMock).not.toHaveBeenCalled();
   });
 
   it("scopes to the caller's own reports (both statuses) for a non-manager", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findManyMock.mockResolvedValue([REPORT_10, REPORT_11] as never);
 
-    const response = await GET(
-      getRequest("http://localhost/api/reports", { "X-Sales-Person-Id": "1" }),
-    );
+    const response = await GET(getRequest("http://localhost/api/reports"));
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith(
@@ -117,12 +120,10 @@ describe("GET /api/reports", () => {
   });
 
   it("ignores the sales_person_id query for a non-manager", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findManyMock.mockResolvedValue([REPORT_10] as never);
 
-    await GET(
-      getRequest("http://localhost/api/reports?sales_person_id=2", { "X-Sales-Person-Id": "1" }),
-    );
+    await GET(getRequest("http://localhost/api/reports?sales_person_id=2"));
 
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ where: { sales_person_id: 1 } }),
@@ -130,12 +131,10 @@ describe("GET /api/reports", () => {
   });
 
   it("scopes to SUBMITTED across all sales persons for a manager", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findManyMock.mockResolvedValue([REPORT_10] as never);
 
-    const response = await GET(
-      getRequest("http://localhost/api/reports", { "X-Sales-Person-Id": "5" }),
-    );
+    const response = await GET(getRequest("http://localhost/api/reports"));
 
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith(
@@ -147,12 +146,10 @@ describe("GET /api/reports", () => {
   });
 
   it("lets a manager filter by sales_person_id", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findManyMock.mockResolvedValue([REPORT_10] as never);
 
-    await GET(
-      getRequest("http://localhost/api/reports?sales_person_id=1", { "X-Sales-Person-Id": "5" }),
-    );
+    await GET(getRequest("http://localhost/api/reports?sales_person_id=1"));
 
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: "SUBMITTED", sales_person_id: 1 } }),
@@ -160,14 +157,10 @@ describe("GET /api/reports", () => {
   });
 
   it("applies date_from/date_to filters", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findManyMock.mockResolvedValue([] as never);
 
-    await GET(
-      getRequest("http://localhost/api/reports?date_from=2026-08-25&date_to=2026-08-31", {
-        "X-Sales-Person-Id": "1",
-      }),
-    );
+    await GET(getRequest("http://localhost/api/reports?date_from=2026-08-25&date_to=2026-08-31"));
 
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -184,7 +177,9 @@ describe("GET /api/reports", () => {
 });
 
 describe("POST /api/reports", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await POST(
       postRequest({ report_date: "2026-08-26", status: "DRAFT", visit_records: [] }),
     );
@@ -193,13 +188,10 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 422 when SUBMITTED has no visit_records", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
 
     const response = await POST(
-      postRequest(
-        { report_date: "2026-08-26", status: "SUBMITTED", visit_records: [] },
-        { "X-Sales-Person-Id": "1" },
-      ),
+      postRequest({ report_date: "2026-08-26", status: "SUBMITTED", visit_records: [] }),
     );
 
     expect(response.status).toBe(422);
@@ -209,7 +201,7 @@ describe("POST /api/reports", () => {
   });
 
   it("allows DRAFT with zero visit_records and returns 201", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue({
       ...CREATED_REPORT,
       status: "DRAFT",
@@ -217,10 +209,7 @@ describe("POST /api/reports", () => {
     } as never);
 
     const response = await POST(
-      postRequest(
-        { report_date: "2026-08-26", status: "DRAFT", visit_records: [] },
-        { "X-Sales-Person-Id": "1" },
-      ),
+      postRequest({ report_date: "2026-08-26", status: "DRAFT", visit_records: [] }),
     );
 
     expect(response.status).toBe(201);
@@ -237,7 +226,7 @@ describe("POST /api/reports", () => {
   });
 
   it("returns 409 when the (sales_person_id, report_date) pair already exists", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -246,35 +235,29 @@ describe("POST /api/reports", () => {
     );
 
     const response = await POST(
-      postRequest(
-        {
-          report_date: "2026-08-25",
-          status: "SUBMITTED",
-          visit_records: [{ customer_id: 1, visit_content: "訪問" }],
-        },
-        { "X-Sales-Person-Id": "1" },
-      ),
+      postRequest({
+        report_date: "2026-08-25",
+        status: "SUBMITTED",
+        visit_records: [{ customer_id: 1, visit_content: "訪問" }],
+      }),
     );
 
     expect(response.status).toBe(409);
   });
 
-  it("creates a SUBMITTED report using the header identity, ignoring a body sales_person_id", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+  it("creates a SUBMITTED report using the session identity, ignoring a body sales_person_id", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue(CREATED_REPORT as never);
 
     const response = await POST(
-      postRequest(
-        {
-          sales_person_id: 999,
-          report_date: "2026-08-26",
-          status: "SUBMITTED",
-          visit_records: [
-            { customer_id: 1, visit_content: "新商品の提案を実施", visit_time: "10:00" },
-          ],
-        },
-        { "X-Sales-Person-Id": "1" },
-      ),
+      postRequest({
+        sales_person_id: 999,
+        report_date: "2026-08-26",
+        status: "SUBMITTED",
+        visit_records: [
+          { customer_id: 1, visit_content: "新商品の提案を実施", visit_time: "10:00" },
+        ],
+      }),
     );
 
     expect(response.status).toBe(201);
