@@ -3,9 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    salesPerson: {
-      findUnique: vi.fn(),
-    },
     dailyReport: {
       findUnique: vi.fn(),
     },
@@ -15,10 +12,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { POST } from "./route";
 
-const findUniqueSalesPersonMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findUniqueReportMock = vi.mocked(prisma.dailyReport.findUnique);
 const createCommentMock = vi.mocked(prisma.managerComment.create);
 
@@ -28,6 +30,7 @@ const YAMADA = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
@@ -44,20 +47,16 @@ const CREATED_COMMENT = {
 };
 
 beforeEach(() => {
-  findUniqueSalesPersonMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
   findUniqueReportMock.mockReset();
   createCommentMock.mockReset();
 });
 
-function withAuthHeader(headers: Record<string, string> = {}): Record<string, string> {
-  return { "X-Sales-Person-Id": "5", ...headers };
-}
-
-function postRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/reports/10/comments", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
@@ -66,19 +65,18 @@ function ctx(id: string) {
 }
 
 describe("POST /api/reports/:id/comments", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await POST(postRequest({ comment: "確認します" }), ctx("10"));
     expect(response.status).toBe(401);
     expect(createCommentMock).not.toHaveBeenCalled();
   });
 
   it("returns 403 when a non-manager tries to comment (TC-API-CMT-01)", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
 
-    const response = await POST(
-      postRequest({ comment: "確認します" }, withAuthHeader({ "X-Sales-Person-Id": "1" })),
-      ctx("10"),
-    );
+    const response = await POST(postRequest({ comment: "確認します" }), ctx("10"));
 
     expect(response.status).toBe(403);
     expect(findUniqueReportMock).not.toHaveBeenCalled();
@@ -86,36 +84,30 @@ describe("POST /api/reports/:id/comments", () => {
   });
 
   it("returns 404 when the report does not exist", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue(null as never);
 
-    const response = await POST(
-      postRequest({ comment: "確認します" }, withAuthHeader()),
-      ctx("999"),
-    );
+    const response = await POST(postRequest({ comment: "確認します" }), ctx("999"));
 
     expect(response.status).toBe(404);
     expect(createCommentMock).not.toHaveBeenCalled();
   });
 
   it("returns 403 when a manager comments on a DRAFT report (TC-API-CMT-02)", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue({ status: "DRAFT" } as never);
 
-    const response = await POST(
-      postRequest({ comment: "確認します" }, withAuthHeader()),
-      ctx("11"),
-    );
+    const response = await POST(postRequest({ comment: "確認します" }), ctx("11"));
 
     expect(response.status).toBe(403);
     expect(createCommentMock).not.toHaveBeenCalled();
   });
 
   it("returns 422 when comment is missing (TC-API-CMT-04)", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue({ status: "SUBMITTED" } as never);
 
-    const response = await POST(postRequest({}, withAuthHeader()), ctx("10"));
+    const response = await POST(postRequest({}), ctx("10"));
 
     expect(response.status).toBe(422);
     const body = await response.json();
@@ -124,12 +116,12 @@ describe("POST /api/reports/:id/comments", () => {
   });
 
   it("creates a comment on a SUBMITTED report and returns 201 (TC-API-CMT-03)", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue({ status: "SUBMITTED" } as never);
     createCommentMock.mockResolvedValue(CREATED_COMMENT as never);
 
     const response = await POST(
-      postRequest({ comment: "見積もりの件、私からも確認します" }, withAuthHeader()),
+      postRequest({ comment: "見積もりの件、私からも確認します" }),
       ctx("10"),
     );
 

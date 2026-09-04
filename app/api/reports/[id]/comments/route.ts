@@ -1,12 +1,13 @@
 // コメント API: 投稿
 // 参照: docs/api-specification.md 6.1 POST /api/reports/:id/comments
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 1/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson, requireManager } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession, requireManager } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/errors";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   commentBodySchema,
   commentResponseSchema,
@@ -17,17 +18,15 @@ import { parseIdParam, parseJsonBody } from "@/lib/api/validation";
 type Context = { params: Promise<{ id: string }> };
 
 const pathParamsSchema = z.object({ id: z.string().openapi({ example: "10" }) });
-const headersSchema = z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam });
 
 registry.registerPath({
   method: "post",
   path: "/reports/{id}/comments",
   summary: "コメント投稿",
   description:
-    "投稿者はis_manager=trueである必要がある（営業は403）。対象日報はSUBMITTEDのみコメント可能（DRAFTは403）。",
+    "投稿者はis_manager=trueである必要がある（営業は403）。対象日報はSUBMITTEDのみコメント可能（DRAFTは403）。認証はSupabase Authのログインセッション（cookie）で行う。",
   request: {
     params: pathParamsSchema,
-    headers: headersSchema,
     body: { content: { "application/json": { schema: commentBodySchema } } },
   },
   responses: {
@@ -55,7 +54,7 @@ registry.registerPath({
 });
 
 export const POST = withApiHandler(async (request: NextRequest, { params }: Context) => {
-  const current = await getCurrentSalesPerson(request);
+  const current = await getCurrentSalesPersonFromSession();
   requireManager(current);
 
   const { id } = await params;

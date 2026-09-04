@@ -4,9 +4,6 @@ import { Prisma } from "@/generated/prisma/client";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    salesPerson: {
-      findUnique: vi.fn(),
-    },
     dailyReport: {
       findUnique: vi.fn(),
       update: vi.fn(),
@@ -14,10 +11,15 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { GET, PUT } from "./route";
 
-const findUniqueSalesPersonMock = vi.mocked(prisma.salesPerson.findUnique);
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findUniqueReportMock = vi.mocked(prisma.dailyReport.findUnique);
 const updateMock = vi.mocked(prisma.dailyReport.update);
 
@@ -27,6 +29,7 @@ const YAMADA = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
@@ -77,26 +80,22 @@ function buildReport(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
-  findUniqueSalesPersonMock.mockReset();
+  getSalesPersonFromSessionMock.mockReset();
   findUniqueReportMock.mockReset();
   updateMock.mockReset();
 });
 
-function withAuthHeader(headers: Record<string, string> = {}): Record<string, string> {
-  return { "X-Sales-Person-Id": "1", ...headers };
-}
-
-function makeRequest(headers?: Record<string, string>): NextRequest {
+function makeRequest(): NextRequest {
   return new NextRequest("http://localhost/api/reports/10", {
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
-function putRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function putRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/reports/10", {
     method: "PUT",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
@@ -105,76 +104,66 @@ function ctx(id: string) {
 }
 
 describe("GET /api/reports/:id", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(401);
   });
 
   it("returns 404 when the report does not exist", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue(null as never);
 
-    const response = await GET(makeRequest(withAuthHeader()), ctx("999"));
+    const response = await GET(makeRequest(), ctx("999"));
     expect(response.status).toBe(404);
   });
 
   it("allows the owner to access their own DRAFT report", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue(buildReport({ status: "DRAFT" }) as never);
 
-    const response = await GET(makeRequest(withAuthHeader()), ctx("10"));
+    const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(200);
   });
 
   it("denies another sales person from accessing a DRAFT report", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(TANAKA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(TANAKA as never);
     findUniqueReportMock.mockResolvedValue(buildReport({ status: "DRAFT" }) as never);
 
-    const response = await GET(
-      makeRequest(withAuthHeader({ "X-Sales-Person-Id": "2" })),
-      ctx("10"),
-    );
+    const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(403);
   });
 
   it("denies a manager from accessing another sales person's DRAFT report", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue(buildReport({ status: "DRAFT" }) as never);
 
-    const response = await GET(
-      makeRequest(withAuthHeader({ "X-Sales-Person-Id": "5" })),
-      ctx("10"),
-    );
+    const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(403);
   });
 
   it("allows a manager to access another sales person's SUBMITTED report", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue(buildReport({ status: "SUBMITTED" }) as never);
 
-    const response = await GET(
-      makeRequest(withAuthHeader({ "X-Sales-Person-Id": "5" })),
-      ctx("10"),
-    );
+    const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(200);
   });
 
   it("denies a non-manager, non-owner from accessing a SUBMITTED report", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(TANAKA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(TANAKA as never);
     findUniqueReportMock.mockResolvedValue(buildReport({ status: "SUBMITTED" }) as never);
 
-    const response = await GET(
-      makeRequest(withAuthHeader({ "X-Sales-Person-Id": "2" })),
-      ctx("10"),
-    );
+    const response = await GET(makeRequest(), ctx("10"));
     expect(response.status).toBe(403);
   });
 
   it("returns visit records and comments in the documented shape and order", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue(buildReport() as never);
 
-    const response = await GET(makeRequest(withAuthHeader()), ctx("10"));
+    const response = await GET(makeRequest(), ctx("10"));
     const body = await response.json();
 
     expect(body).toMatchObject({
@@ -206,7 +195,9 @@ describe("GET /api/reports/:id", () => {
 });
 
 describe("PUT /api/reports/:id", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await PUT(
       putRequest({ report_date: "2026-08-25", status: "DRAFT", visit_records: [] }),
       ctx("10"),
@@ -216,14 +207,11 @@ describe("PUT /api/reports/:id", () => {
   });
 
   it("returns 404 when the report does not exist", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue(null as never);
 
     const response = await PUT(
-      putRequest(
-        { report_date: "2026-08-25", status: "DRAFT", visit_records: [] },
-        withAuthHeader(),
-      ),
+      putRequest({ report_date: "2026-08-25", status: "DRAFT", visit_records: [] }),
       ctx("999"),
     );
 
@@ -232,14 +220,11 @@ describe("PUT /api/reports/:id", () => {
   });
 
   it("returns 403 when the caller is not the report's creator", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(TANAKA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(TANAKA as never);
     findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
 
     const response = await PUT(
-      putRequest(
-        { report_date: "2026-08-25", status: "DRAFT", visit_records: [] },
-        withAuthHeader({ "X-Sales-Person-Id": "2" }),
-      ),
+      putRequest({ report_date: "2026-08-25", status: "DRAFT", visit_records: [] }),
       ctx("10"),
     );
 
@@ -248,14 +233,11 @@ describe("PUT /api/reports/:id", () => {
   });
 
   it("returns 422 when SUBMITTED has no visit_records", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
 
     const response = await PUT(
-      putRequest(
-        { report_date: "2026-08-25", status: "SUBMITTED", visit_records: [] },
-        withAuthHeader(),
-      ),
+      putRequest({ report_date: "2026-08-25", status: "SUBMITTED", visit_records: [] }),
       ctx("10"),
     );
 
@@ -264,7 +246,7 @@ describe("PUT /api/reports/:id", () => {
   });
 
   it("returns 409 when the changed report_date collides with another of the caller's reports", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
     updateMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -274,14 +256,11 @@ describe("PUT /api/reports/:id", () => {
     );
 
     const response = await PUT(
-      putRequest(
-        {
-          report_date: "2026-08-24",
-          status: "SUBMITTED",
-          visit_records: [{ customer_id: 1, visit_content: "訪問" }],
-        },
-        withAuthHeader(),
-      ),
+      putRequest({
+        report_date: "2026-08-24",
+        status: "SUBMITTED",
+        visit_records: [{ customer_id: 1, visit_content: "訪問" }],
+      }),
       ctx("10"),
     );
 
@@ -289,7 +268,7 @@ describe("PUT /api/reports/:id", () => {
   });
 
   it("replaces visit_records wholesale (delete all, then create the new set)", async () => {
-    findUniqueSalesPersonMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
     updateMock.mockResolvedValue(
       buildReport({
@@ -307,16 +286,13 @@ describe("PUT /api/reports/:id", () => {
     );
 
     const response = await PUT(
-      putRequest(
-        {
-          report_date: "2026-08-25",
-          status: "SUBMITTED",
-          visit_records: [
-            { customer_id: 1, visit_content: "新商品の提案を実施", visit_time: "10:00" },
-          ],
-        },
-        withAuthHeader(),
-      ),
+      putRequest({
+        report_date: "2026-08-25",
+        status: "SUBMITTED",
+        visit_records: [
+          { customer_id: 1, visit_content: "新商品の提案を実施", visit_time: "10:00" },
+        ],
+      }),
       ctx("10"),
     );
 

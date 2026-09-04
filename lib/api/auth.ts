@@ -1,7 +1,15 @@
-// 疑似認証（X-Sales-Person-Id ヘッダー）の共通処理
-// 参照: docs/api-specification.md 1.2 「現在のユーザー」の指定方法（認証代替）
+// APIルートの現在ユーザー解決。
+// 参照: Issue #78（X-Sales-Person-Id ヘッダーをクライアントが自由に偽装できる問題への対応）
+//
+// 移行中は2つの解決方式が並存する。
+// - getCurrentSalesPersonFromSession: Supabase Authのログインセッション（cookie）を検証して
+//   解決する新方式。reports/comments系ルートから移行済み（Issue #78 Stage 1/3）。
+// - getCurrentSalesPerson: 旧来の X-Sales-Person-Id ヘッダーをそのまま信頼する方式
+//   （docs/api-specification.md 1.2 「認証代替」）。sales-persons/customers系ルートが
+//   Stage 2/3で移行するまでの間、暫定的に残す。移行完了後は削除する。
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { ApiError } from "./errors";
 
 export const SALES_PERSON_ID_HEADER = "x-sales-person-id";
@@ -12,9 +20,27 @@ export interface CurrentSalesPerson {
 }
 
 /**
+ * Supabase Authのログインセッションを検証し、対応する SALES_PERSON を解決する。
+ * 未ログイン、またはログイン中のSupabase Authユーザーに対応する営業担当者が存在しない場合は
+ * 401 UNAUTHENTICATED。
+ */
+export async function getCurrentSalesPersonFromSession(): Promise<CurrentSalesPerson> {
+  const salesPerson = await getSalesPersonFromSession();
+
+  if (!salesPerson) {
+    throw new ApiError("UNAUTHENTICATED", "ログインしていません");
+  }
+
+  return { salesPersonId: salesPerson.sales_person_id, isManager: salesPerson.is_manager };
+}
+
+/**
  * X-Sales-Person-Id ヘッダーを読み取り、SALES_PERSON の存在確認を行う。
  * ヘッダー未指定・数値でない・該当レコードが存在しない場合はいずれも 401 UNAUTHENTICATED。
  * `GET /api/sales-persons` はこの関数を呼ばずに実装する（ヘッダー無しで呼び出し可能な例外のため）。
+ *
+ * @deprecated クライアントが任意の sales_person_id を指定できてしまう（Issue #78）。
+ * 新規・移行済みのルートは getCurrentSalesPersonFromSession を使うこと。
  */
 export async function getCurrentSalesPerson(request: NextRequest): Promise<CurrentSalesPerson> {
   const headerValue = request.headers.get(SALES_PERSON_ID_HEADER);

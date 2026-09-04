@@ -1,22 +1,31 @@
 // 結合テスト: コメント API
 // 参照: docs/test-specification.md 4.4 コメント API
-import { beforeEach, describe, expect, it } from "vitest";
+// 認証: Supabase Authのログインセッションは getSalesPersonFromSession をモックして表現する
+// （Issue #78 Stage 1/3でreports/commentsがセッションベース認証に移行したため）。
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { hasTestDatabase, resetTestDatabase } from "@/tests/integration/db";
-import { authHeaders, ctx, postRequest } from "@/tests/integration/request";
+import { ctx, mockSalesPersonSession, postRequest } from "@/tests/integration/request";
 import { POST } from "./route";
+
+const sessionMock = vi.mocked(getSalesPersonFromSession);
 
 describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id/comments", () => {
   beforeEach(async () => {
     await resetTestDatabase();
+    sessionMock.mockReset();
   });
 
   it("営業によるコメント拒否 (TC-API-CMT-01)", async () => {
+    sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
     const response = await POST(
-      postRequest(
-        "http://localhost/api/reports/10/comments",
-        { comment: "確認します" },
-        authHeaders(1),
-      ),
+      postRequest("http://localhost/api/reports/10/comments", { comment: "確認します" }),
       ctx("10"),
     );
 
@@ -24,12 +33,10 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id/comments"
   });
 
   it("DRAFTへのコメント拒否 (TC-API-CMT-02)", async () => {
+    sessionMock.mockResolvedValue(mockSalesPersonSession(5));
+
     const response = await POST(
-      postRequest(
-        "http://localhost/api/reports/11/comments",
-        { comment: "確認します" },
-        authHeaders(5),
-      ),
+      postRequest("http://localhost/api/reports/11/comments", { comment: "確認します" }),
       ctx("11"),
     );
 
@@ -37,12 +44,10 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id/comments"
   });
 
   it("上長のコメント投稿成功 (TC-API-CMT-03)", async () => {
+    sessionMock.mockResolvedValue(mockSalesPersonSession(5));
+
     const response = await POST(
-      postRequest(
-        "http://localhost/api/reports/10/comments",
-        { comment: "確認します" },
-        authHeaders(5),
-      ),
+      postRequest("http://localhost/api/reports/10/comments", { comment: "確認します" }),
       ctx("10"),
     );
 
@@ -53,8 +58,10 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id/comments"
   });
 
   it("必須項目欠如 (TC-API-CMT-04)", async () => {
+    sessionMock.mockResolvedValue(mockSalesPersonSession(5));
+
     const response = await POST(
-      postRequest("http://localhost/api/reports/10/comments", {}, authHeaders(5)),
+      postRequest("http://localhost/api/reports/10/comments", {}),
       ctx("10"),
     );
 
