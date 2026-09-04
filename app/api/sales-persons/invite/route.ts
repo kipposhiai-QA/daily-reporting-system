@@ -1,12 +1,12 @@
 // 営業担当者招待 API: SalesPersonレコードの作成とSupabase Auth招待メール送信を一体で行う
 // 参照: Issue #74（新規担当者の招待フローを追加する）
+// 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 2/3）。
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPerson } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/errors";
 import { withApiHandler } from "@/lib/api/handler";
-import { errorResponseSchema, registry, salesPersonIdHeaderParam } from "@/lib/api/openapi";
+import { errorResponseSchema, registry } from "@/lib/api/openapi";
 import {
   mapSalesPersonPrismaError,
   salesPersonBodySchema,
@@ -23,9 +23,9 @@ registry.registerPath({
   description:
     "SalesPersonレコードを作成した上で、Supabase Admin API (inviteUserByEmail) により" +
     "認証ユーザーを招待し、SalesPerson.auth_user_id に紐付ける。招待メール送信に失敗した場合は" +
-    "作成したSalesPersonレコードを削除しロールバックする。",
+    "作成したSalesPersonレコードを削除しロールバックする。認証はSupabase Authのログインセッション" +
+    "（cookie）で行う。",
   request: {
-    headers: z.object({ "X-Sales-Person-Id": salesPersonIdHeaderParam }),
     body: { content: { "application/json": { schema: salesPersonBodySchema } } },
   },
   responses: {
@@ -49,7 +49,7 @@ registry.registerPath({
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  await getCurrentSalesPerson(request);
+  await getCurrentSalesPersonFromSession();
 
   const body = await parseJsonBody(request, salesPersonBodySchema);
 

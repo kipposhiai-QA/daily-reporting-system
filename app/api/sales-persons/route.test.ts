@@ -6,17 +6,21 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     salesPerson: {
       findMany: vi.fn(),
-      findUnique: vi.fn(),
       create: vi.fn(),
     },
   },
 }));
 
+vi.mock("@/lib/supabase/current-sales-person", () => ({
+  getSalesPersonFromSession: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
+import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
 import { GET, POST } from "./route";
 
+const getSalesPersonFromSessionMock = vi.mocked(getSalesPersonFromSession);
 const findManyMock = vi.mocked(prisma.salesPerson.findMany);
-const findUniqueMock = vi.mocked(prisma.salesPerson.findUnique);
 const createMock = vi.mocked(prisma.salesPerson.create);
 
 const YAMADA = {
@@ -25,26 +29,27 @@ const YAMADA = {
   email: "yamada@example.com",
   department: "営業1課",
   is_manager: false,
+  auth_user_id: "11111111-1111-1111-1111-111111111111",
   created_at: new Date("2026-08-01T09:00:00.000Z"),
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
 
 beforeEach(() => {
+  getSalesPersonFromSessionMock.mockReset();
   findManyMock.mockReset();
-  findUniqueMock.mockReset();
   createMock.mockReset();
 });
 
-function postRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function postRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost/api/sales-persons", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json" },
   });
 }
 
 describe("GET /api/sales-persons", () => {
-  it("returns the list without requiring the auth header", async () => {
+  it("returns the list without requiring a Supabase Auth session", async () => {
     findManyMock.mockResolvedValue([YAMADA] as never);
 
     const response = await GET();
@@ -61,19 +66,21 @@ describe("GET /api/sales-persons", () => {
         updated_at: "2026-08-01T18:00:00+09:00",
       },
     ]);
-    expect(findUniqueMock).not.toHaveBeenCalled();
+    expect(getSalesPersonFromSessionMock).not.toHaveBeenCalled();
   });
 });
 
 describe("POST /api/sales-persons", () => {
-  it("returns 401 when the auth header is missing", async () => {
+  it("returns 401 when there is no Supabase Auth session", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(null);
+
     const response = await POST(postRequest({ name: "田中花子", email: "tanaka@example.com" }));
     expect(response.status).toBe(401);
     expect(createMock).not.toHaveBeenCalled();
   });
 
   it("defaults is_manager to false when omitted and returns 201", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue({
       ...YAMADA,
       sales_person_id: 2,
@@ -82,9 +89,7 @@ describe("POST /api/sales-persons", () => {
       department: null,
     } as never);
 
-    const response = await POST(
-      postRequest({ name: "田中花子", email: "tanaka@example.com" }, { "X-Sales-Person-Id": "1" }),
-    );
+    const response = await POST(postRequest({ name: "田中花子", email: "tanaka@example.com" }));
 
     expect(response.status).toBe(201);
     expect(createMock).toHaveBeenCalledWith({
@@ -95,9 +100,9 @@ describe("POST /api/sales-persons", () => {
   });
 
   it("returns 422 when required fields are missing", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
 
-    const response = await POST(postRequest({}, { "X-Sales-Person-Id": "1" }));
+    const response = await POST(postRequest({}));
 
     expect(response.status).toBe(422);
     const body = await response.json();
@@ -107,7 +112,7 @@ describe("POST /api/sales-persons", () => {
   });
 
   it("returns 409 when the email is already in use", async () => {
-    findUniqueMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -115,9 +120,7 @@ describe("POST /api/sales-persons", () => {
       }),
     );
 
-    const response = await POST(
-      postRequest({ name: "山田太郎2", email: "yamada@example.com" }, { "X-Sales-Person-Id": "1" }),
-    );
+    const response = await POST(postRequest({ name: "山田太郎2", email: "yamada@example.com" }));
 
     expect(response.status).toBe(409);
     const body = await response.json();

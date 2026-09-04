@@ -3,10 +3,10 @@
 //
 // 移行中は2つの解決方式が並存する。
 // - getCurrentSalesPersonFromSession: Supabase Authのログインセッション（cookie）を検証して
-//   解決する新方式。reports/comments系ルートから移行済み（Issue #78 Stage 1/3）。
+//   解決する新方式。reports/comments（Stage 1/3）、sales-persons（Stage 2/3）から移行済み。
 // - getCurrentSalesPerson: 旧来の X-Sales-Person-Id ヘッダーをそのまま信頼する方式
-//   （docs/api-specification.md 1.2 「認証代替」）。sales-persons/customers系ルートが
-//   Stage 2/3で移行するまでの間、暫定的に残す。移行完了後は削除する。
+//   （docs/api-specification.md 1.2 「認証代替」）。customers系ルートがStage 3/3で
+//   移行するまでの間、暫定的に残す。移行完了後は削除する。
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSalesPersonFromSession } from "@/lib/supabase/current-sales-person";
