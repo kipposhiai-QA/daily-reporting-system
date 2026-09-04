@@ -1,5 +1,6 @@
 "use client";
 
+import type { AuthError } from "@supabase/supabase-js";
 import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,26 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 
 const MIN_PASSWORD_LENGTH = 6;
+
+const LINK_EXPIRED_MESSAGE =
+  "パスワードの更新に失敗しました。リンクの有効期限が切れている可能性があります。もう一度パスワード再設定をお試しください";
+
+/**
+ * updateUser()のエラーコード別に表示メッセージを出し分ける（参照: Issue #76）。
+ * same_password・weak_password はセッション自体は有効な入力値エラーのため、
+ * リンク期限切れではなくパスワードの再入力を促すメッセージにする。
+ * それ以外（セッション/リンク自体が無効な場合を含む）は従来通りのメッセージにフォールバックする。
+ */
+function getUpdatePasswordErrorMessage(error: AuthError): string {
+  switch (error.code) {
+    case "same_password":
+      return "新しいパスワードは現在のパスワードと異なるものにしてください";
+    case "weak_password":
+      return "パスワードの強度が不足しています。別のパスワードを入力してください";
+    default:
+      return LINK_EXPIRED_MESSAGE;
+  }
+}
 
 /**
  * 新パスワード設定画面。パスワードリセットメール内のリンクから遷移する
@@ -45,9 +66,7 @@ export function UpdatePasswordForm() {
       const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
-        setFormError(
-          "パスワードの更新に失敗しました。リンクの有効期限が切れている可能性があります。もう一度パスワード再設定をお試しください",
-        );
+        setFormError(getUpdatePasswordErrorMessage(error));
         return;
       }
 
