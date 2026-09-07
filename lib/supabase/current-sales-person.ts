@@ -30,5 +30,16 @@ export async function getSalesPersonFromSession(): Promise<SalesPerson | null> {
 
   if (!user) return null;
 
-  return prisma.salesPerson.findUnique({ where: { auth_user_id: user.id } });
+  const salesPerson = await prisma.salesPerson.findUnique({ where: { auth_user_id: user.id } });
+
+  if (!salesPerson) {
+    // Supabase Authのセッションは有効だが、対応する SalesPerson.auth_user_id が存在しないケース。
+    // 原因調査のため、どのauth_user_id/emailで紐付け先が見つからなかったかをログ出力する。
+    console.error("[getSalesPersonFromSession] no SalesPerson found for authenticated user:", {
+      auth_user_id: user.id,
+      email: user.email,
+    });
+  }
+
+  return salesPerson;
 }
