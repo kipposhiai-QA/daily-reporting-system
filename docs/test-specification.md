@@ -8,6 +8,7 @@
 - 対象：
   - 画面テスト（SCR-01〜07、ブラウザ操作レベル）
   - APIテスト（`docs/api-specification.md` の各エンドポイント、結合テストレベル）
+  - E2Eテスト（Playwright、実ブラウザ・実DB・実Supabase Authを用いたクリティカルフローの自動化。5章参照）
 - 対象外：フロントエンド/バックエンドの単体テスト（関数・コンポーネント単位）は実装時に開発者が別途作成する前提とし、本書では扱わない。
 
 ## 2. テスト環境・前提データ
@@ -27,6 +28,19 @@
   1. 本番デプロイ用とは別に、Supabase（もしくは他のPostgreSQLホスティング）でCI専用のプロジェクト/データベースを新規作成する。
   2. その接続情報を GitHub リポジトリの **Settings → Secrets and variables → Actions** に `TEST_DATABASE_URL`（プーリング接続）・`TEST_DIRECT_URL`（直接接続）として登録する。
   3. `.github/workflows/ci.yml` の `lint-test-build` ジョブは、これらのSecretsが設定されていれば自動的に `prisma migrate deploy` でスキーマを適用し、`npm run test` に結合テスト用の接続情報を渡す。未設定の間はこのステップ・結合テストともにスキップされ、CIの他の工程（lint・画面テスト・APIルート単体テスト・build）はそのまま実行される。
+
+#### 2.1.2 E2Eテスト（Playwright）の実行基盤
+
+E2Eテスト（5章、`e2e/**/*.spec.ts`）は、結合テスト（2.1.1）のようにAPIレイヤーを直接呼ぶのではなく、実際に起動したNext.jsアプリに対して実ブラウザ（Playwright）から操作する。認証もモックせず、実際にSupabase Authへログインする。
+
+- **共有/本番のSupabaseプロジェクトは絶対に使用しない。** ログイン・日報作成・パスワードリセットは実際にDBへの書き込みやSupabase Authユーザーの作成を伴うため、本番相当DBに対して実行すると汚染してしまう。E2Eテストは **Supabase CLIのローカルスタック**（`supabase start`：Postgres + Auth + Inbucket〔メールキャプチャ〕が一式起動する）専用とする。
+- `e2e/global-setup.ts`（PlaywrightのglobalSetup）が、Playwright実行前に一度だけ `npx tsx e2e/seed.ts` をサブプロセスとして実行する（`generated/prisma/client.ts` がESM専用のコードで、Playwright自身のTypeScriptローダー経由では読み込めないため、`prisma/seed.ts` と同じ `tsx` 実行に委譲している。参照: `prisma.config.ts`）。`e2e/seed.ts` は次を行う。
+  1. `prisma/seed-data.ts` の `resetAndSeed()` で共通シードデータ（2.2）を投入する。
+  2. Supabase Admin API（`auth.admin.createUser`）でテスト用ユーザー（`yamada@example.com` / `password123`。`components/auth/login-form.tsx` のヒントと同じ値）を作成し、`sales_person_id=1`（山田太郎）の `auth_user_id` に紐付ける。
+  3. 上記の接続先がローカルホスト（`127.0.0.1`/`localhost`）以外を指す場合はエラーで停止する（安全装置）。
+- 必要な環境変数: `E2E_DATABASE_URL` / `E2E_SUPABASE_URL` / `E2E_SUPABASE_ANON_KEY` / `E2E_SUPABASE_SERVICE_ROLE_KEY`（すべてローカルのSupabase CLIスタックの値）。
+- **ローカルで実行する場合**: [Supabase CLI](https://supabase.com/docs/guides/local-development)をインストールし、`supabase start` を実行後、表示される接続情報（API URL / anon key / service_role key / DB URL）を上記の環境変数として設定し、`DATABASE_URL="$E2E_DATABASE_URL" npx prisma migrate deploy` でスキーマを適用してから `npm run test:e2e` を実行する。
+- **CIで実行する場合**: `.github/workflows/ci.yml` の `e2e` ジョブが `supabase/setup-cli` で導入したSupabase CLIにより `supabase start` を実行し、その出力から上記の環境変数を自動で設定する。共有/本番プロジェクトのSecrets（`DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL`等、deployジョブが使うもの）とは完全に別系統であり、E2Eジョブのために追加のSecrets登録は不要。
 
 ### 2.2 共通シードデータ
 
@@ -178,6 +192,30 @@
 
 ---
 
-## 5. トレーサビリティ
+## 5. E2Eテスト（Playwright）
 
-各テストケースIDは対象の画面ID（SCR-xx）またはAPIエンドポイント（`docs/api-specification.md` 章番号）に対応しており、要件定義書の該当節（3.1〜3.4）に遡って確認できる。実装時・改修時は、関連する要件・画面・APIの変更に応じて本書のテストケースも合わせて見直すこと。
+画面テスト（3章）・APIテスト（4章）はそれぞれ手動確認／APIレイヤーの結合テストであり、「実ブラウザで実際にログインし、複数画面をまたいで操作する」経路は検証していない。E2Eテストは、特に事故が起きたときの影響が大きいクリティカルなフローに絞って自動化し、回帰を検知することを目的とする（画面テスト3章の全項目を置き換えるものではない）。
+
+実行環境・前提データの構築方法は2.1.2を参照。テストコードは `e2e/` 配下（`e2e/global-setup.ts`、`e2e/seed.ts`、`e2e/fixtures/`、`e2e/*.spec.ts`）に置く。
+
+### 5.1 対象フロー（段階的に拡充）
+
+| ID        | フロー                                       | 状態     | 備考                                                                                            |
+| --------- | -------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| TC-E2E-01 | ログイン → ログアウト                        | 実装済み | `e2e/login.spec.ts`。正しい認証情報でのログイン成功、誤ったパスワードでのエラー表示の両方を検証 |
+| TC-E2E-02 | 日報の作成 → 一覧表示 → 詳細表示             | 未実装   | SCR-01〜03（1章）に対応。後続で追加予定                                                         |
+| TC-E2E-03 | パスワードリセット（メール送信→リンク→更新） | 未実装   | メール本文の検証方法（Inbucket等）を含め、追加時に別途設計する                                  |
+
+### 5.2 TC-E2E-01 ログイン→ログアウト
+
+| ID           | 観点                             | 事前条件                                                             | 手順・入力                                                            | 期待結果                                                                       |
+| ------------ | -------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| TC-E2E-01-01 | 正しい認証情報でのログイン成功   | `e2e/global-setup.ts` がテストユーザー（山田太郎）を作成・紐付け済み | `/login` でメールアドレス・パスワードを入力し「ログイン」             | トップページへ遷移し、ヘッダーに「山田太郎（営業）」が表示される               |
+| TC-E2E-01-02 | ログアウト                       | TC-E2E-01-01でログイン済み                                           | ヘッダーの「ログアウト」をクリック                                    | `/login` へ遷移する                                                            |
+| TC-E2E-01-03 | 誤ったパスワードでのログイン失敗 | -                                                                    | `/login` で正しいメールアドレス・誤ったパスワードを入力し「ログイン」 | 「メールアドレスまたはパスワードが正しくありません」が表示され、画面遷移しない |
+
+---
+
+## 6. トレーサビリティ
+
+各テストケースIDは対象の画面ID（SCR-xx）またはAPIエンドポイント（`docs/api-specification.md` 章番号）に対応しており、要件定義書の該当節（3.1〜3.4）に遡って確認できる。E2Eテスト（TC-E2E-xx）は5.1の対象フロー表に対応する。実装時・改修時は、関連する要件・画面・APIの変更に応じて本書のテストケースも合わせて見直すこと。

@@ -5,7 +5,11 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
-    exclude: ["node_modules", ".next"],
+    // e2e/**/*.spec.ts は Playwright専用（playwright.config.ts、`npm run test:e2e`）。
+    // vitestのデフォルトincludeパターンは *.spec.ts にもマッチするため、誤って拾って
+    // 実行しないよう明示的に除外する（Playwrightの test()/test.describe() は vitest の
+    // ランナー上では動作しない）。
+    exclude: ["node_modules", ".next", "e2e/**"],
     projects: [
       {
         extends: true,
@@ -13,7 +17,7 @@ export default defineConfig({
           name: "unit",
           environment: "jsdom",
           setupFiles: ["./vitest.setup.ts"],
-          exclude: ["node_modules", ".next", "**/*.integration.test.ts"],
+          exclude: ["node_modules", ".next", "e2e/**", "**/*.integration.test.ts"],
         },
       },
       {
@@ -26,7 +30,7 @@ export default defineConfig({
           environment: "node",
           setupFiles: ["./tests/integration/setup.ts"],
           include: ["**/*.integration.test.ts"],
-          exclude: ["node_modules", ".next"],
+          exclude: ["node_modules", ".next", "e2e/**"],
           fileParallelism: false,
         },
       },

@@ -48,6 +48,85 @@ jobs:
 
       - run: npm run build
 
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      # postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts at
+      # `npm ci` time, before the local Supabase stack (and its real DB URL) exists yet.
+      # Overwritten with the real local DB URL once `supabase start` has run (see below).
+      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+      E2E_BASE_URL: "http://127.0.0.1:3000"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ローカルのSupabase CLIスタック（Postgres + Auth + Inbucket等）を起動する。
+      # 共有/本番のSupabaseプロジェクトには一切触れない（参照: e2e/global-setup.ts）。
+      - name: Start local Supabase stack
+        run: supabase start
+
+      # `supabase status -o env` の出力キー名（API_URL/DB_URL/ANON_KEY/SERVICE_ROLE_KEY）を
+      # このワークフロー・Playwright側で使う名前（E2E_*, NEXT_PUBLIC_*, DATABASE_URL等）に
+      # マッピングする。$GITHUB_ENV への書き込みは次のステップ以降にしか反映されないため、
+      # このステップ内で参照するには一度 eval してシェル変数として展開する必要がある。
+      - name: Export local Supabase connection info
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "E2E_SUPABASE_URL=${API_URL}"
+            echo "E2E_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "E2E_SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "E2E_DATABASE_URL=${DB_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "DATABASE_URL=${DB_URL}"
+            echo "DIRECT_URL=${DB_URL}"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations to the local Supabase database
+        run: npx prisma migrate deploy
+
+      # NEXT_PUBLIC_* はビルド時にクライアントバンドルへ埋め込まれるため、ローカルスタックの
+      # URL/anon keyを設定した上でここでビルドする（参照: docs/deployment.md）。
+      - name: Build
+        run: npm run build
+
+      # next.config.ts の `output: "standalone"` により `next start` は使えない（起動時に
+      # 警告を出して失敗する）。Dockerfileと同様、.next/standalone/server.js を直接起動する
+      # ため、静的アセット（public/、.next/static/）を手動でコピーする（参照: Dockerfile）。
+      - name: Prepare standalone server static assets
+        run: |
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop
+
   deploy:
     needs: lint-test-build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
