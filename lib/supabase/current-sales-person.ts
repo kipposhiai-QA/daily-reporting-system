@@ -16,7 +16,17 @@ export async function getSalesPersonFromSession(): Promise<SalesPerson | null> {
   // getSession()ではなくgetUser()を使う（cookieの内容をそのまま信用せず、Supabase Authサーバーに問い合わせて検証するため）。
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  if (error) {
+    // cookieの内容が不正・期限切れ等で検証に失敗した場合、原因調査のため詳細をログ出力する。
+    console.error("[getSalesPersonFromSession] supabase.auth.getUser() failed:", {
+      message: error.message,
+      status: error.status,
+      name: error.name,
+    });
+  }
 
   if (!user) return null;
 
