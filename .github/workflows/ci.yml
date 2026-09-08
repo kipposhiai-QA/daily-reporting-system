@@ -70,15 +70,16 @@ jobs:
         with:
           version: latest
 
-      # ローカルのSupabase CLIスタック（Postgres + Auth + Inbucket等）を起動する。
-      # 共有/本番のSupabaseプロジェクトには一切触れない（参照: e2e/global-setup.ts）。
+      # ローカルのSupabase CLIスタック（Postgres + Auth + Mailpit〔メールキャプチャ〕等）を
+      # 起動する。共有/本番のSupabaseプロジェクトには一切触れない（参照: e2e/global-setup.ts）。
       - name: Start local Supabase stack
         run: supabase start
 
-      # `supabase status -o env` の出力キー名（API_URL/DB_URL/ANON_KEY/SERVICE_ROLE_KEY）を
-      # このワークフロー・Playwright側で使う名前（E2E_*, NEXT_PUBLIC_*, DATABASE_URL等）に
-      # マッピングする。$GITHUB_ENV への書き込みは次のステップ以降にしか反映されないため、
-      # このステップ内で参照するには一度 eval してシェル変数として展開する必要がある。
+      # `supabase status -o env` の出力キー名（API_URL/DB_URL/ANON_KEY/SERVICE_ROLE_KEY/
+      # MAILPIT_URL）を、このワークフロー・Playwright側で使う名前（E2E_*, NEXT_PUBLIC_*,
+      # DATABASE_URL等）にマッピングする。$GITHUB_ENV への書き込みは次のステップ以降にしか
+      # 反映されないため、このステップ内で参照するには一度 eval してシェル変数として展開する
+      # 必要がある。
       - name: Export local Supabase connection info
         run: |
           eval "$(supabase status -o env)"
@@ -87,6 +88,7 @@ jobs:
             echo "E2E_SUPABASE_ANON_KEY=${ANON_KEY}"
             echo "E2E_SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
             echo "E2E_DATABASE_URL=${DB_URL}"
+            echo "E2E_MAILPIT_URL=${MAILPIT_URL}"
             echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
             echo "DATABASE_URL=${DB_URL}"

@@ -33,12 +33,12 @@
 
 E2Eテスト（5章、`e2e/**/*.spec.ts`）は、結合テスト（2.1.1）のようにAPIレイヤーを直接呼ぶのではなく、実際に起動したNext.jsアプリに対して実ブラウザ（Playwright）から操作する。認証もモックせず、実際にSupabase Authへログインする。
 
-- **共有/本番のSupabaseプロジェクトは絶対に使用しない。** ログイン・日報作成・パスワードリセットは実際にDBへの書き込みやSupabase Authユーザーの作成を伴うため、本番相当DBに対して実行すると汚染してしまう。E2Eテストは **Supabase CLIのローカルスタック**（`supabase start`：Postgres + Auth + Inbucket〔メールキャプチャ〕が一式起動する）専用とする。
+- **共有/本番のSupabaseプロジェクトは絶対に使用しない。** ログイン・日報作成・パスワードリセットは実際にDBへの書き込みやSupabase Authユーザーの作成を伴うため、本番相当DBに対して実行すると汚染してしまう。E2Eテストは **Supabase CLIのローカルスタック**（`supabase start`：Postgres + Auth + Mailpit〔メールキャプチャ〕が一式起動する）専用とする。現行のSupabase CLIはローカルのメールキャッチャーとしてMailpitを使用する（旧称Inbucketは廃止済みだが、`supabase status -o env` は後方互換のため `INBUCKET_URL` も併せて出力する。値はMailpitと同じ）。
 - `e2e/global-setup.ts`（PlaywrightのglobalSetup）が、Playwright実行前に一度だけ `npx tsx e2e/seed.ts` をサブプロセスとして実行する（`generated/prisma/client.ts` がESM専用のコードで、Playwright自身のTypeScriptローダー経由では読み込めないため、`prisma/seed.ts` と同じ `tsx` 実行に委譲している。参照: `prisma.config.ts`）。`e2e/seed.ts` は次を行う。
   1. `prisma/seed-data.ts` の `resetAndSeed()` で共通シードデータ（2.2）を投入する。
-  2. Supabase Admin API（`auth.admin.createUser`）でテスト用ユーザー（`yamada@example.com` / `password123`。`components/auth/login-form.tsx` のヒントと同じ値）を作成し、`sales_person_id=1`（山田太郎）の `auth_user_id` に紐付ける。
+  2. Supabase Admin API（`auth.admin.createUser`）で2つのテストユーザーを作成し、それぞれ対応する`SALES_PERSON`の `auth_user_id` に紐付ける（参照: `e2e/fixtures/test-users.ts`）。`TEST_USER`（`yamada@example.com` / `password123`。`components/auth/login-form.tsx` のヒントと同じ値）は`sales_person_id=1`（山田太郎）に、`PASSWORD_RESET_TEST_USER`（`tanaka@example.com` / `password123`）は`sales_person_id=2`（田中花子）に紐付ける。パスワードリセットのE2E（5.4）はパスワードを書き換えるため、他のE2Eが使い回す`TEST_USER`とは別アカウントを使う。
   3. 上記の接続先がローカルホスト（`127.0.0.1`/`localhost`）以外を指す場合はエラーで停止する（安全装置）。
-- 必要な環境変数: `E2E_DATABASE_URL` / `E2E_SUPABASE_URL` / `E2E_SUPABASE_ANON_KEY` / `E2E_SUPABASE_SERVICE_ROLE_KEY`（すべてローカルのSupabase CLIスタックの値）。
+- 必要な環境変数: `E2E_DATABASE_URL` / `E2E_SUPABASE_URL` / `E2E_SUPABASE_ANON_KEY` / `E2E_SUPABASE_SERVICE_ROLE_KEY`（すべてローカルのSupabase CLIスタックの値）。`E2E_MAILPIT_URL`（Mailpit Web UI/APIのURL。既定は `supabase start` のデフォルトポート `http://127.0.0.1:54324`）はパスワードリセットのE2E（`e2e/reset-password.spec.ts`）が使用する。未設定時はこのデフォルト値にフォールバックするため、ローカル実行時は明示的な設定を省略できる。
 - **ローカルで実行する場合**: [Supabase CLI](https://supabase.com/docs/guides/local-development)をインストールし、`supabase start` を実行後、表示される接続情報（API URL / anon key / service_role key / DB URL）を上記の環境変数として設定し、`DATABASE_URL="$E2E_DATABASE_URL" npx prisma migrate deploy` でスキーマを適用してから `npm run test:e2e` を実行する。
 - **CIで実行する場合**: `.github/workflows/ci.yml` の `e2e` ジョブが `supabase/setup-cli` で導入したSupabase CLIにより `supabase start` を実行し、その出力から上記の環境変数を自動で設定する。共有/本番プロジェクトのSecrets（`DATABASE_URL`/`NEXT_PUBLIC_SUPABASE_URL`等、deployジョブが使うもの）とは完全に別系統であり、E2Eジョブのために追加のSecrets登録は不要。
 
@@ -204,7 +204,7 @@ E2Eテスト（5章、`e2e/**/*.spec.ts`）は、結合テスト（2.1.1）の�
 | --------- | -------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
 | TC-E2E-01 | ログイン → ログアウト                        | 実装済み | `e2e/login.spec.ts`。正しい認証情報でのログイン成功、誤ったパスワードでのエラー表示の両方を検証 |
 | TC-E2E-02 | 日報の作成 → 一覧表示 → 詳細表示             | 実装済み | `e2e/report-flow.spec.ts`。SCR-01〜03（1章）に対応。提出時・下書き保存時の両方を検証            |
-| TC-E2E-03 | パスワードリセット（メール送信→リンク→更新） | 未実装   | メール本文の検証方法（Inbucket等）を含め、追加時に別途設計する                                  |
+| TC-E2E-03 | パスワードリセット（メール送信→リンク→更新） | 実装済み | `e2e/reset-password.spec.ts`。メール本文はMailpitのHTTP APIから取得する（5.4参照）              |
 
 ### 5.2 TC-E2E-01 ログイン→ログアウト
 
@@ -222,6 +222,16 @@ E2Eテスト（5章、`e2e/**/*.spec.ts`）は、結合テスト（2.1.1）の�
 | ------------ | ----------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TC-E2E-02-01 | 訪問記録を入力して提出→一覧・詳細に反映   | 山田太郎としてログイン済み | `/reports` で「＋新規作成」→対象日・顧客・訪問内容・訪問時刻・Problem・Planを入力→「提出する」 | `/reports` へ戻り、作成した日報が「提出済み」「1件」として一覧表示される。行クリックで詳細に遷移し、入力した訪問記録・Problem・Planがそのまま表示される |
 | TC-E2E-02-02 | 訪問記録なしで下書き保存→一覧・詳細に反映 | 山田太郎としてログイン済み | `/reports/new` で対象日・Problemのみ入力し「下書き保存」                                       | `/reports` へ戻り、作成した日報が「下書き」「0件」として一覧表示される。詳細では「訪問記録はありません」と表示される                                    |
+
+### 5.4 TC-E2E-03 パスワードリセット（メール送信→リンク→更新）
+
+`PASSWORD_RESET_TEST_USER`（`e2e/fixtures/test-users.ts`。sales_person_id=2、田中花子）を使う。`TEST_USER`はTC-E2E-01・TC-E2E-02が使い回すため、パスワードを書き換える本テストでは専用アカウントを使い、実行順序への依存を避ける。
+
+メール本文の取得は、Mailpit（ローカルのSupabase CLIスタックのメールキャッチャー。2.1.2参照）のHTTP APIを利用する。`<MAILPIT_URL>/view/latest.html?query=to:<email>` が該当メールのレンダリング済みHTMLを直接返す（JSON API側のフィールド仕様に依存しない）ため、本文中のパスワード再設定リンク（Supabase Authの `/auth/v1/verify` エンドポイントへのリンク）を正規表現で抽出する。ローカルのSMTP送信からMailpitへの反映には多少のタイムラグがあるため、取得できるまでポーリングする。
+
+| ID           | 観点                                           | 事前条件       | 手順・入力                                                                                                                              | 期待結果                                                                                                                                                                                              |
+| ------------ | ---------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC-E2E-03-01 | メール送信→リンクから新パスワード設定→ログイン | 未ログイン状態 | `/login`「パスワードを忘れた方」→`/reset-password`でメールアドレスを入力し送信→Mailpitから届いたメールのリンクを開く→新パスワードを設定 | 送信直後に送信済みメッセージが表示される。リンクから`/reset-password/confirm`へ遷移でき、新パスワードの設定に成功する。設定後、新パスワードでログインでき、ヘッダーに「田中花子（営業）」が表示される |
 
 ---
 
