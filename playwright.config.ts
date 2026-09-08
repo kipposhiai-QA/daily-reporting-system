@@ -14,7 +14,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? "github" : "html",
+  // CIでは "github" 単体だと playwright-report/ が生成されず、ci.yml の
+  // 「Upload Playwright report」ステップが常に空のアーティファクトになっていた
+  // （path not foundを既定の "warn" で握りつぶすため、CI自体は失敗しない）。
+  // "html" を併用してレポート本体を生成する（open: "never" でCI中の自動オープンを抑止）。
+  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "html",
   // CIでは起動直後のSupabaseローカルスタック・standaloneサーバーへの初回リクエストが
   // 既定の5秒を超えることがあるため、expectのタイムアウトを伸ばす。
   expect: { timeout: 10_000 },
