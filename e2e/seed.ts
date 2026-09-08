@@ -2,8 +2,8 @@
 // シードスクリプト。
 // - ローカルのSupabase CLIスタック（`supabase start`）のDBに、共通シードデータ
 //   （prisma/seed-data.ts、docs/test-specification.md 2.2）を投入する
-// - シードした SalesPerson（山田太郎, sales_person_id=1）に、Supabase Authの
-//   テストユーザーを auth_user_id で紐付ける
+// - シードした SalesPerson（山田太郎 sales_person_id=1、田中花子 sales_person_id=2）に、
+//   Supabase Authのテストユーザーを auth_user_id で紐付ける（参照: e2e/fixtures/test-users.ts）
 //
 // generated/prisma/client.ts は import.meta.url を使うESM専用のコードで、Playwright自身の
 // TypeScriptローダー（既定でCommonJSとして変換する）経由でPrisma Clientを読み込むと
@@ -21,7 +21,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@/generated/prisma/client";
 import { resetAndSeed } from "@/prisma/seed-data";
-import { TEST_USER } from "./fixtures/test-users";
+import { PASSWORD_RESET_TEST_USER, TEST_USER } from "./fixtures/test-users";
+
+interface AuthTestUser {
+  readonly salesPersonId: number;
+  readonly email: string;
+  readonly password: string;
+}
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -68,22 +74,29 @@ async function main(): Promise<void> {
   try {
     await resetAndSeed(prisma);
 
-    const authUserId = await ensureTestAuthUser(supabaseAdmin);
-
-    await prisma.salesPerson.update({
-      where: { sales_person_id: TEST_USER.salesPersonId },
-      data: { auth_user_id: authUserId },
-    });
+    // TEST_USER（login.spec.ts / report-flow.spec.ts用）とPASSWORD_RESET_TEST_USER
+    // （reset-password.spec.ts専用。パスワードを書き換えるためTEST_USERとは別アカウントにする）
+    // の両方にSupabase Authユーザーを作成・紐付けする。
+    for (const user of [TEST_USER, PASSWORD_RESET_TEST_USER]) {
+      const authUserId = await ensureTestAuthUser(supabaseAdmin, user);
+      await prisma.salesPerson.update({
+        where: { sales_person_id: user.salesPersonId },
+        data: { auth_user_id: authUserId },
+      });
+    }
   } finally {
     await prisma.$disconnect();
   }
 }
 
 /** テスト用ユーザーをSupabase Authに作成する（既に存在する場合は既存ユーザーを再利用する）。 */
-async function ensureTestAuthUser(supabaseAdmin: SupabaseClient): Promise<string> {
+async function ensureTestAuthUser(
+  supabaseAdmin: SupabaseClient,
+  user: AuthTestUser,
+): Promise<string> {
   const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email: TEST_USER.email,
-    password: TEST_USER.password,
+    email: user.email,
+    password: user.password,
     email_confirm: true,
   });
 
@@ -101,7 +114,7 @@ async function ensureTestAuthUser(supabaseAdmin: SupabaseClient): Promise<string
     );
   }
 
-  const existing = listed.users.find((user) => user.email === TEST_USER.email);
+  const existing = listed.users.find((u) => u.email === user.email);
   if (!existing) {
     throw new Error(`テスト用Authユーザーの作成に失敗しました: ${createError.message}`);
   }
