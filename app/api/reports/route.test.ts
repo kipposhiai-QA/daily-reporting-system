@@ -245,6 +245,29 @@ describe("POST /api/reports", () => {
     expect(response.status).toBe(409);
   });
 
+  it("returns 422 when a visit_record references a non-existent customer_id", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    createMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Foreign key constraint failed", {
+        code: "P2003",
+        clientVersion: "7.9.1",
+      }),
+    );
+
+    const response = await POST(
+      postRequest({
+        report_date: "2026-08-26",
+        status: "SUBMITTED",
+        visit_records: [{ customer_id: 9999, visit_content: "訪問" }],
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toBe("指定された顧客が見つかりません");
+  });
+
   it("creates a SUBMITTED report using the session identity, ignoring a body sales_person_id", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue(CREATED_REPORT as never);
