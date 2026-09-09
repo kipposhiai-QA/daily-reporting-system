@@ -234,4 +234,19 @@ describe("ReportDetail", () => {
 
     expect(await screen.findByText("この日報にアクセスする権限がありません")).toBeInTheDocument();
   });
+
+  it("shows a not-found message when the report_id does not exist (TC-SCR03-09)", async () => {
+    mockCurrentUser();
+    const { ApiClientError } =
+      await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+    apiGetMock.mockRejectedValue(
+      new ApiClientError(404, {
+        error: { code: "NOT_FOUND", message: "指定された日報が見つかりません" },
+      }),
+    );
+
+    render(<ReportDetail reportId="999" />);
+
+    expect(await screen.findByText("指定された日報が見つかりません")).toBeInTheDocument();
+  });
 });
