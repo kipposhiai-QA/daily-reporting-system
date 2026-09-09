@@ -79,5 +79,22 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/sales-persons", () =>
       const fields = body.error.details.map((detail: { field: string }) => detail.field);
       expect(fields).toEqual(expect.arrayContaining(["name", "email"]));
     });
+
+    it.each(["notanemail", "foo@", "@example.com"])(
+      "メール形式不正時は422になる (Issue #94, %s)",
+      async (email) => {
+        sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+        const response = await POST(
+          postRequest("http://localhost/api/sales-persons", { name: "佐藤次郎", email }),
+        );
+
+        expect(response.status).toBe(422);
+        const body = await response.json();
+        expect(body.error.code).toBe("VALIDATION_ERROR");
+        const fields = body.error.details.map((detail: { field: string }) => detail.field);
+        expect(fields).toEqual(expect.arrayContaining(["email"]));
+      },
+    );
   });
 });
