@@ -62,5 +62,22 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/customers", () => {
       const fields = body.error.details.map((detail: { field: string }) => detail.field);
       expect(fields).toEqual(expect.arrayContaining(["company_name"]));
     });
+
+    it.each(["notanemail", "foo@", "@example.com"])(
+      "メール形式不正時は422になる (Issue #97, %s)",
+      async (email) => {
+        sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+        const response = await POST(
+          postRequest("http://localhost/api/customers", { company_name: "株式会社C社", email }),
+        );
+
+        expect(response.status).toBe(422);
+        const body = await response.json();
+        expect(body.error.code).toBe("VALIDATION_ERROR");
+        const fields = body.error.details.map((detail: { field: string }) => detail.field);
+        expect(fields).toEqual(expect.arrayContaining(["email"]));
+      },
+    );
   });
 });

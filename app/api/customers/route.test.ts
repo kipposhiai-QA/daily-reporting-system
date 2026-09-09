@@ -131,6 +131,22 @@ describe("POST /api/customers", () => {
     expect(body.error.details).toEqual([{ field: "company_name", message: expect.any(String) }]);
   });
 
+  it.each(["notanemail", "foo@", "@example.com"])(
+    "returns 422 when the email is malformed (%s)",
+    async (email) => {
+      getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+
+      const response = await POST(postRequest({ company_name: "株式会社A社", email }));
+
+      expect(response.status).toBe(422);
+      expect(createMock).not.toHaveBeenCalled();
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      const fields = body.error.details.map((d: { field: string }) => d.field);
+      expect(fields).toEqual(expect.arrayContaining(["email"]));
+    },
+  );
+
   it.each([
     ["company_name", "会".repeat(201)],
     ["contact_person", "様".repeat(51)],
