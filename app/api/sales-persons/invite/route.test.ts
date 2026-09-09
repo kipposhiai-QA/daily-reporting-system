@@ -94,6 +94,23 @@ describe("POST /api/sales-persons/invite", () => {
     expect(inviteUserByEmail).not.toHaveBeenCalled();
   });
 
+  it.each(["notanemail", "foo@", "@example.com"])(
+    "returns 422 when the email is malformed (%s), without calling the Admin API",
+    async (email) => {
+      getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+      const response = await POST(postRequest({ name: "佐藤次郎", email }));
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      const fields = body.error.details.map((d: { field: string }) => d.field);
+      expect(fields).toEqual(expect.arrayContaining(["email"]));
+      expect(createMock).not.toHaveBeenCalled();
+      expect(inviteUserByEmail).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns 409 without calling the Admin API when the email is already used by a SalesPerson", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(
