@@ -89,8 +89,8 @@ describe("SalesPersonList", () => {
     );
   });
 
-  it("links the invite button to /sales-persons/invite (Issue #74)", () => {
-    mockCurrentUser();
+  it("links the invite button to /sales-persons/invite for a manager (Issue #74)", () => {
+    mockCurrentUser({ currentUser: SUZUKI, isManager: true });
 
     render(<SalesPersonList />);
 
@@ -98,6 +98,14 @@ describe("SalesPersonList", () => {
       "href",
       "/sales-persons/invite",
     );
+  });
+
+  it("hides the invite button for a non-manager (Issue #102)", () => {
+    mockCurrentUser({ currentUser: YAMADA, isManager: false });
+
+    render(<SalesPersonList />);
+
+    expect(screen.queryByRole("link", { name: "招待する" })).not.toBeInTheDocument();
   });
 
   it("navigates to the edit screen when a row is clicked", async () => {

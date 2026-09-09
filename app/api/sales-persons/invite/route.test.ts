@@ -44,6 +44,17 @@ const YAMADA = {
   updated_at: new Date("2026-08-01T09:00:00.000Z"),
 };
 
+const SUZUKI = {
+  sales_person_id: 5,
+  name: "鈴木一郎",
+  email: "suzuki@example.com",
+  department: "営業1課",
+  is_manager: true,
+  auth_user_id: "55555555-5555-5555-5555-555555555555",
+  created_at: new Date("2026-08-01T09:00:00.000Z"),
+  updated_at: new Date("2026-08-01T09:00:00.000Z"),
+};
+
 const CREATED_SATO = {
   sales_person_id: 3,
   name: "佐藤次郎",
@@ -82,8 +93,20 @@ describe("POST /api/sales-persons/invite", () => {
     expect(inviteUserByEmail).not.toHaveBeenCalled();
   });
 
-  it("returns 422 when required fields are missing", async () => {
+  it("returns 403 when the current user is not a manager (Issue #102)", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(postRequest({ name: "佐藤次郎", email: "sato@example.com" }));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(createMock).not.toHaveBeenCalled();
+    expect(inviteUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when required fields are missing", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
 
     const response = await POST(postRequest({}));
 
@@ -97,7 +120,7 @@ describe("POST /api/sales-persons/invite", () => {
   it.each(["notanemail", "foo@", "@example.com"])(
     "returns 422 when the email is malformed (%s), without calling the Admin API",
     async (email) => {
-      getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+      getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
 
       const response = await POST(postRequest({ name: "佐藤次郎", email }));
 
@@ -112,7 +135,7 @@ describe("POST /api/sales-persons/invite", () => {
   );
 
   it("returns 422 when name exceeds 50 characters, without calling the Admin API", async () => {
-    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
 
     const response = await POST(postRequest({ name: "佐".repeat(51), email: "sato@example.com" }));
 
@@ -126,7 +149,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("returns 409 without calling the Admin API when the email is already used by a SalesPerson", async () => {
-    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
     createMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
@@ -143,7 +166,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("creates the SalesPerson, invites via Supabase Admin API, and links auth_user_id (201)", async () => {
-    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
     createMock.mockResolvedValue(CREATED_SATO as never);
     inviteUserByEmail.mockResolvedValue({
       data: { user: { id: "22222222-2222-2222-2222-222222222222" } },
@@ -176,7 +199,7 @@ describe("POST /api/sales-persons/invite", () => {
   });
 
   it("rolls back the created SalesPerson when the Admin API invite fails", async () => {
-    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI as never);
     createMock.mockResolvedValue(CREATED_SATO as never);
     inviteUserByEmail.mockResolvedValue({
       data: { user: null },
