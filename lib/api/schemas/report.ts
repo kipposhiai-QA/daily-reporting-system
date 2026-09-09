@@ -184,7 +184,8 @@ export type ReportBody = z.infer<typeof reportBodySchema>;
 
 /**
  * 日報作成・更新で発生しうるPrismaの制約違反エラーを共通エラー形式に変換して投げ直す。
- * P2002: (sales_person_id, report_date) の一意制約違反 / P2025: 対象レコード無し。
+ * P2002: (sales_person_id, report_date) の一意制約違反 / P2025: 対象レコード無し /
+ * P2003: visit_records.customer_id が存在しない顧客を指すことによる外部キー制約違反（Issue #92）。
  */
 export function mapReportPrismaError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -193,6 +194,11 @@ export function mapReportPrismaError(error: unknown): never {
     }
     if (error.code === "P2025") {
       throw new ApiError("NOT_FOUND", "指定された日報が見つかりません");
+    }
+    if (error.code === "P2003") {
+      throw new ApiError("VALIDATION_ERROR", "指定された顧客が見つかりません", [
+        { field: "visit_records", message: "存在しない顧客が指定されています" },
+      ]);
     }
   }
   throw error;

@@ -77,5 +77,23 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id", () => {
       expect(body.visit_records).toHaveLength(1);
       expect(body.visit_records[0].customer_id).toBe(1);
     });
+
+    it("存在しないcustomer_idを指定した場合 (Issue #92)", async () => {
+      sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+      const response = await PUT(
+        putRequest("http://localhost/api/reports/10", {
+          report_date: "2026-08-25",
+          status: "SUBMITTED",
+          visit_records: [{ customer_id: 9999, visit_content: "訪問" }],
+        }),
+        ctx("10"),
+      );
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      expect(body.error.message).toBe("指定された顧客が見つかりません");
+    });
   });
 });
