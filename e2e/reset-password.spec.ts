@@ -7,8 +7,6 @@ import { PASSWORD_RESET_TEST_USER } from "./fixtures/test-users";
 // （ローカル実行時は `supabase start` のデフォルトポートをそのまま使う）。
 const MAILPIT_URL = process.env.E2E_MAILPIT_URL ?? "http://127.0.0.1:54324";
 
-const NEW_PASSWORD = "new-password456";
-const ANOTHER_NEW_PASSWORD = "another-password789";
 const NONEXISTENT_EMAIL = "nonexistent-user@example.com";
 
 // components/auth/update-password-form.tsx の LINK_EXPIRED_MESSAGE と同一文言。
@@ -109,6 +107,15 @@ async function requestPasswordResetAndGetLink(
   return fetchPasswordResetLink(email, { excludeMessageId: previousMessageId });
 }
 
+/** 実行のたびに一意なパスワードを生成する。既にこのアカウントに設定されている
+ * パスワードと衝突すると、Supabase Authの same_password バリデーションに
+ * 引っかかってしまうため（このファイル内でPASSWORD_RESET_TEST_USERを使い回す
+ * 複数テスト間、およびPlaywrightのリトライ間で固定値を使うと発生し得る）。
+ */
+function uniquePassword(label: string): string {
+  return `${label}-${Date.now()}`;
+}
+
 /** 新パスワード設定フォームに入力して送信する */
 async function submitNewPassword(page: import("@playwright/test").Page, password: string) {
   await page.getByLabel("新しいパスワード", { exact: true }).fill(password);
@@ -135,11 +142,12 @@ test.describe("パスワードリセット", () => {
     });
 
     // 4. リンクを開いて新パスワードを設定
+    const password = uniquePassword("main-flow");
     await page.goto(resetLink);
     await expect(page).toHaveURL(/\/reset-password\/confirm/);
 
-    await page.getByLabel("新しいパスワード", { exact: true }).fill(NEW_PASSWORD);
-    await page.getByLabel("新しいパスワード（確認）").fill(NEW_PASSWORD);
+    await page.getByLabel("新しいパスワード", { exact: true }).fill(password);
+    await page.getByLabel("新しいパスワード（確認）").fill(password);
     await page.getByRole("button", { name: "パスワードを更新" }).click();
     await expect(page.getByText("パスワードを更新しました")).toBeVisible();
 
@@ -148,7 +156,7 @@ test.describe("パスワードリセット", () => {
 
     // 5. 新パスワードでログインできることを確認
     await page.getByLabel("メールアドレス").fill(PASSWORD_RESET_TEST_USER.email);
-    await page.getByLabel("パスワード", { exact: true }).fill(NEW_PASSWORD);
+    await page.getByLabel("パスワード", { exact: true }).fill(password);
     await page.getByRole("button", { name: "ログイン" }).click();
 
     await expect(page).toHaveURL("/");
@@ -175,17 +183,20 @@ test.describe("パスワードリセット", () => {
   }) => {
     const resetLink = await requestPasswordResetAndGetLink(page, PASSWORD_RESET_TEST_USER.email);
 
-    // 1回目: リンクを使って正常にパスワードを更新する
+    // 1回目: リンクを使って正常にパスワードを更新する。
+    // このアカウントの「現在のパスワード」と同じ値を指定するとSupabase Authの
+    // same_password バリデーションで拒否されてしまうため、他のテストや過去の
+    // リトライで使われた値と衝突しないよう毎回一意な値を生成する。
     await page.goto(resetLink);
     await expect(page).toHaveURL(/\/reset-password\/confirm/);
-    await submitNewPassword(page, NEW_PASSWORD);
+    await submitNewPassword(page, uniquePassword("reuse-link-1st"));
     await expect(page.getByText("パスワードを更新しました")).toBeVisible();
 
     // 2回目: 同じリンクをもう一度開いてパスワード更新を試みる。
     // リンク（Supabase Authの回復トークン）は1回使い切ると無効になるため、
     // 2回目の訪問では有効な回復セッションが確立されず更新に失敗するはず。
     await page.goto(resetLink);
-    await submitNewPassword(page, ANOTHER_NEW_PASSWORD);
+    await submitNewPassword(page, uniquePassword("reuse-link-2nd"));
     await expect(page.getByText(LINK_EXPIRED_MESSAGE)).toBeVisible();
   });
 
@@ -198,7 +209,7 @@ test.describe("パスワードリセット", () => {
     const invalidLink = resetLink.replace(/token=[^&]+/, "token=invalid-token-00000000");
 
     await page.goto(invalidLink);
-    await submitNewPassword(page, NEW_PASSWORD);
+    await submitNewPassword(page, uniquePassword("invalid-link"));
     await expect(page.getByText(LINK_EXPIRED_MESSAGE)).toBeVisible();
   });
 });
