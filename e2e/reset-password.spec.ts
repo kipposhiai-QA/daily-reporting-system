@@ -18,32 +18,66 @@ const LINK_EXPIRED_MESSAGE =
   "パスワードの更新に失敗しました。リンクの有効期限が切れている可能性があります。もう一度パスワード再設定をお試しください";
 
 /**
+ * 指定メールアドレス宛の、現時点でのMailpit上の最新メッセージIDを取得する
+ * （該当メールが1通もなければnull）。新規リクエスト前に呼び、後続の
+ * fetchPasswordResetLink() の excludeMessageId に渡すことで、「まだ届いていない
+ * 新しいメールではなく、以前のテストで送信済みの古いメール（かつ既に使用済みの
+ * リンク）を誤って掴んでしまう」レースコンディションを防ぐ。
+ * 同じテストファイル内で同一メールアドレス（PASSWORD_RESET_TEST_USER）宛に
+ * 複数回リセット申請するため、このガードが無いと再利用リンクのテストなどで
+ * 古いメールを取得してしまうことがある。
+ */
+async function getLatestMailpitMessageId(email: string): Promise<string | null> {
+  const query = encodeURIComponent(`to:${email}`);
+  const response = await fetch(`${MAILPIT_URL}/api/v1/search?query=${query}&limit=1`);
+  if (!response.ok) return null;
+  const data = (await response.json()) as { messages?: Array<{ ID: string }> };
+  return data.messages?.[0]?.ID ?? null;
+}
+
+/**
  * Mailpitに届いたパスワード再設定メールから、確認リンク（Supabase Auth
  * `/auth/v1/verify` へのリンク）を取り出す。
  *
- * Mailpitの `/view/latest.html?query=...` はマッチした最新メールのレンダリング済み
- * HTMLをそのまま返す（該当なしの場合は404）。JSON API側のフィールド仕様に依存せず、
- * メール本文中のリンクを正規表現で抜き出すだけで済むためこちらを採用する
- * （参照: https://mailpit.axllent.org/docs/api-v1/）。
+ * `/api/v1/search` でメールアドレス宛の最新メッセージIDを取得し、そのIDが
+ * excludeMessageId（リクエスト前時点の最新ID）と異なる場合のみ、そのメッセージを
+ * `/view/{ID}.html` で取得して確認リンクを抜き出す。IDが一致する間は「まだ新しい
+ * メールが届いていない」とみなしてポーリングを続ける（参照:
+ * https://mailpit.axllent.org/docs/api-v1/）。
  * ローカルのSMTP送信〜Mailpitへの反映には多少のタイムラグがあるため、届くまで
  * ポーリングする。
  *
+ * excludeMessageId: getLatestMailpitMessageId() で事前に取得した「リクエスト前の
+ *   最新メッセージID」。省略時（null）は常に最新メッセージを対象にする（そのメール
+ *   アドレス宛の送信がテスト内で初めての場合はこれで問題ない）。
  * timeoutMs: 「メールが送信されないこと」を確認したいテスト（存在しないメール
- * アドレス宛のケース）向けに、待機時間を短く指定できるようにしている。
+ *   アドレス宛のケース）向けに、待機時間を短く指定できるようにしている。
  */
-async function fetchPasswordResetLink(email: string, timeoutMs = 20_000): Promise<string> {
+async function fetchPasswordResetLink(
+  email: string,
+  options: { excludeMessageId?: string | null; timeoutMs?: number } = {},
+): Promise<string> {
+  const { excludeMessageId = null, timeoutMs = 20_000 } = options;
   const query = encodeURIComponent(`to:${email}`);
   const deadline = Date.now() + timeoutMs;
   let lastStatus: number | undefined;
 
   while (Date.now() < deadline) {
-    const response = await fetch(`${MAILPIT_URL}/view/latest.html?query=${query}`);
-    if (response.ok) {
-      const html = await response.text();
-      const match = html.match(/href="([^"]*\/auth\/v1\/verify[^"]*)"/i);
-      if (match) return match[1].replace(/&amp;/g, "&");
+    const searchResponse = await fetch(`${MAILPIT_URL}/api/v1/search?query=${query}&limit=1`);
+    if (searchResponse.ok) {
+      const data = (await searchResponse.json()) as { messages?: Array<{ ID: string }> };
+      const latestId = data.messages?.[0]?.ID;
+      if (latestId && latestId !== excludeMessageId) {
+        const viewResponse = await fetch(`${MAILPIT_URL}/view/${latestId}.html`);
+        if (viewResponse.ok) {
+          const html = await viewResponse.text();
+          const match = html.match(/href="([^"]*\/auth\/v1\/verify[^"]*)"/i);
+          if (match) return match[1].replace(/&amp;/g, "&");
+        }
+      }
+    } else {
+      lastStatus = searchResponse.status;
     }
-    lastStatus = response.status;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
@@ -58,6 +92,21 @@ async function requestPasswordReset(page: import("@playwright/test").Page, email
   await page.getByLabel("メールアドレス").fill(email);
   await page.getByRole("button", { name: "リセットメールを送信" }).click();
   await expect(page.getByText("パスワード再設定用のメールを送信しました")).toBeVisible();
+}
+
+/**
+ * リセット申請を行い、新しく届いたメールから確認リンクを取得するまでを一度に行う。
+ * 同一メールアドレス宛に複数回申請するテスト（このファイル内で共有している
+ * PASSWORD_RESET_TEST_USER）で、以前送信済みの古いメールを誤って掴まないよう、
+ * 申請前に最新メッセージIDを控えてから申請・取得を行う。
+ */
+async function requestPasswordResetAndGetLink(
+  page: import("@playwright/test").Page,
+  email: string,
+): Promise<string> {
+  const previousMessageId = await getLatestMailpitMessageId(email);
+  await requestPasswordReset(page, email);
+  return fetchPasswordResetLink(email, { excludeMessageId: previousMessageId });
 }
 
 /** 新パスワード設定フォームに入力して送信する */
@@ -75,12 +124,15 @@ test.describe("パスワードリセット", () => {
     await expect(page).toHaveURL("/reset-password");
 
     // 2. メールアドレスを入力して送信
+    const previousMessageId = await getLatestMailpitMessageId(PASSWORD_RESET_TEST_USER.email);
     await page.getByLabel("メールアドレス").fill(PASSWORD_RESET_TEST_USER.email);
     await page.getByRole("button", { name: "リセットメールを送信" }).click();
     await expect(page.getByText("パスワード再設定用のメールを送信しました")).toBeVisible();
 
     // 3. Mailpitからメールを取得し、確認リンクを抽出
-    const resetLink = await fetchPasswordResetLink(PASSWORD_RESET_TEST_USER.email);
+    const resetLink = await fetchPasswordResetLink(PASSWORD_RESET_TEST_USER.email, {
+      excludeMessageId: previousMessageId,
+    });
 
     // 4. リンクを開いて新パスワードを設定
     await page.goto(resetLink);
@@ -115,14 +167,13 @@ test.describe("パスワードリセット", () => {
 
     // 画面上のメッセージが同一であることに加え、実際にはメールが送信されていない
     // ことも確認する（短いタイムアウトでポーリングし、届かないことを期待する）。
-    await expect(fetchPasswordResetLink(NONEXISTENT_EMAIL, 3_000)).rejects.toThrow();
+    await expect(fetchPasswordResetLink(NONEXISTENT_EMAIL, { timeoutMs: 3_000 })).rejects.toThrow();
   });
 
   test("使用済みのリンクを再度開いた場合はパスワードを更新できない（リンク再利用対策）", async ({
     page,
   }) => {
-    await requestPasswordReset(page, PASSWORD_RESET_TEST_USER.email);
-    const resetLink = await fetchPasswordResetLink(PASSWORD_RESET_TEST_USER.email);
+    const resetLink = await requestPasswordResetAndGetLink(page, PASSWORD_RESET_TEST_USER.email);
 
     // 1回目: リンクを使って正常にパスワードを更新する
     await page.goto(resetLink);
@@ -139,8 +190,7 @@ test.describe("パスワードリセット", () => {
   });
 
   test("無効・期限切れのリンクからはパスワードを更新できない", async ({ page }) => {
-    await requestPasswordReset(page, PASSWORD_RESET_TEST_USER.email);
-    const resetLink = await fetchPasswordResetLink(PASSWORD_RESET_TEST_USER.email);
+    const resetLink = await requestPasswordResetAndGetLink(page, PASSWORD_RESET_TEST_USER.email);
 
     // トークン部分を改ざんし、期限切れ・不正なリンクを開いた状況を再現する。
     // Supabase Auth側では「期限切れ」と「不正なトークン」を同じ無効トークンエラー
