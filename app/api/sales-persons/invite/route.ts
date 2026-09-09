@@ -3,7 +3,7 @@
 // 認証: Supabase Authのログインセッション（cookie）で本人を識別する（Issue #78 Stage 2/3）。
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSalesPersonFromSession } from "@/lib/api/auth";
+import { getCurrentSalesPersonFromSession, requireManager } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/errors";
 import { withApiHandler } from "@/lib/api/handler";
 import { errorResponseSchema, registry } from "@/lib/api/openapi";
@@ -24,7 +24,7 @@ registry.registerPath({
     "SalesPersonレコードを作成した上で、Supabase Admin API (inviteUserByEmail) により" +
     "認証ユーザーを招待し、SalesPerson.auth_user_id に紐付ける。招待メール送信に失敗した場合は" +
     "作成したSalesPersonレコードを削除しロールバックする。認証はSupabase Authのログインセッション" +
-    "（cookie）で行う。",
+    "（cookie）で行う。招待は上長（is_manager=true）のみ実行可能（営業は403。参照: Issue #102）。",
   request: {
     body: { content: { "application/json": { schema: salesPersonBodySchema } } },
   },
@@ -35,6 +35,10 @@ registry.registerPath({
     },
     401: {
       description: "未認証",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    403: {
+      description: "権限なし（上長以外による招待）",
       content: { "application/json": { schema: errorResponseSchema } },
     },
     409: {
@@ -49,7 +53,8 @@ registry.registerPath({
 });
 
 export const POST = withApiHandler(async (request: NextRequest) => {
-  await getCurrentSalesPersonFromSession();
+  const current = await getCurrentSalesPersonFromSession();
+  requireManager(current);
 
   const body = await parseJsonBody(request, salesPersonBodySchema);
 

@@ -19,7 +19,7 @@ function roleLabel(isManager: boolean): string {
 
 export function SalesPersonList() {
   const router = useRouter();
-  const { salesPersons, isLoading, error } = useCurrentUser();
+  const { salesPersons, isLoading, error, isManager } = useCurrentUser();
 
   function goToEdit(salesPersonId: number) {
     router.push(`/sales-persons/${salesPersonId}/edit`);
@@ -30,9 +30,11 @@ export function SalesPersonList() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">営業マスタ</h1>
         <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href="/sales-persons/invite">招待する</Link>
-          </Button>
+          {isManager ? (
+            <Button asChild variant="outline">
+              <Link href="/sales-persons/invite">招待する</Link>
+            </Button>
+          ) : null}
           <Button asChild>
             <Link href="/sales-persons/new">＋新規登録</Link>
           </Button>
