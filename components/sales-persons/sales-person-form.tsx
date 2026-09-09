@@ -152,6 +152,7 @@ export function SalesPersonForm(props: SalesPersonFormProps) {
             id="sales-person-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            maxLength={50}
           />
         </Field>
         <Field>
@@ -161,6 +162,7 @@ export function SalesPersonForm(props: SalesPersonFormProps) {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
           />
         </Field>
         <Field>
@@ -169,6 +171,7 @@ export function SalesPersonForm(props: SalesPersonFormProps) {
             id="sales-person-department"
             value={department}
             onChange={(event) => setDepartment(event.target.value)}
+            maxLength={100}
           />
         </Field>
         <label htmlFor="sales-person-is-manager" className="flex items-center gap-2 text-sm">

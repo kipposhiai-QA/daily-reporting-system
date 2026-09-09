@@ -55,6 +55,16 @@ afterEach(() => {
 });
 
 describe("CustomerForm (create mode)", () => {
+  it("caps each field's input length to match the API's max length (Issue #96)", () => {
+    render(<CustomerForm mode="create" />);
+
+    expect(screen.getByLabelText("会社名＊")).toHaveAttribute("maxLength", "200");
+    expect(screen.getByLabelText("担当者名")).toHaveAttribute("maxLength", "50");
+    expect(screen.getByLabelText("電話番号")).toHaveAttribute("maxLength", "20");
+    expect(screen.getByLabelText("メールアドレス")).toHaveAttribute("maxLength", "254");
+    expect(screen.getByLabelText("住所")).toHaveAttribute("maxLength", "200");
+  });
+
   it("rejects submission when the company name is empty (TC-SCR05-01)", async () => {
     const user = userEvent.setup();
 

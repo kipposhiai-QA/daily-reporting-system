@@ -127,6 +127,77 @@ describe("POST /api/sales-persons", () => {
     },
   );
 
+  it("accepts name/department/email at the max length boundary (50/100/254) and returns 201", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    const name = "田".repeat(50);
+    const department = "部".repeat(100);
+    const email = `${"a".repeat(242)}@example.com`;
+    expect(email).toHaveLength(254);
+    createMock.mockResolvedValue({
+      ...YAMADA,
+      sales_person_id: 2,
+      name,
+      email,
+      department,
+    } as never);
+
+    const response = await POST(postRequest({ name, email, department }));
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith({
+      data: { name, email, department, is_manager: false },
+    });
+  });
+
+  it("returns 422 when name exceeds 50 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(
+      postRequest({ name: "田".repeat(51), email: "tanaka@example.com" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const fields = body.error.details.map((d: { field: string }) => d.field);
+    expect(fields).toEqual(expect.arrayContaining(["name"]));
+  });
+
+  it("returns 422 when email exceeds 254 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    const email = `${"a".repeat(243)}@example.com`;
+    expect(email).toHaveLength(255);
+
+    const response = await POST(postRequest({ name: "田中花子", email }));
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const fields = body.error.details.map((d: { field: string }) => d.field);
+    expect(fields).toEqual(expect.arrayContaining(["email"]));
+  });
+
+  it("returns 422 when department exceeds 100 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(
+      postRequest({
+        name: "田中花子",
+        email: "tanaka@example.com",
+        department: "部".repeat(101),
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const fields = body.error.details.map((d: { field: string }) => d.field);
+    expect(fields).toEqual(expect.arrayContaining(["department"]));
+  });
+
   it("returns 409 when the email is already in use", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(

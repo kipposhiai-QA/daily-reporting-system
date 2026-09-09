@@ -11,6 +11,7 @@ export const commentBodySchema = registry.register(
     comment: z
       .string()
       .min(1, "コメントは必須です")
+      .max(1000, "コメントは1000文字以内で入力してください")
       .openapi({ example: "見積もりの件、私からも確認します" }),
   }),
 );

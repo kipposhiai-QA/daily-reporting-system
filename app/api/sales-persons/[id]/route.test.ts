@@ -121,6 +121,20 @@ describe("PUT /api/sales-persons/:id", () => {
     expect(response.status).toBe(409);
   });
 
+  it("returns 422 when name exceeds 50 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+
+    const response = await PUT(
+      makeRequest("PUT", { name: "山".repeat(51), email: "yamada@example.com" }),
+      ctx("1"),
+    );
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("updates and returns 200 on success", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockResolvedValue({ ...YAMADA, name: "山田次郎" } as never);

@@ -147,7 +147,11 @@ export const reportDetailInclude = {
 
 const visitRecordBodySchema = z.object({
   customer_id: z.number().int().openapi({ example: 1 }),
-  visit_content: z.string().min(1, "訪問内容は必須です").openapi({ example: "新商品の提案を実施" }),
+  visit_content: z
+    .string()
+    .min(1, "訪問内容は必須です")
+    .max(500, "訪問内容は500文字以内で入力してください")
+    .openapi({ example: "新商品の提案を実施" }),
   visit_time: timeOnlySchema.optional().openapi({ example: "10:00" }),
 });
 
@@ -163,10 +167,16 @@ export const reportBodySchema = registry.register(
       status: reportStatusSchema,
       problem: z
         .string()
+        .max(1000, "Problemは1000文字以内で入力してください")
         .nullable()
         .optional()
         .openapi({ example: "A社の見積もり承認が遅れている" }),
-      plan: z.string().nullable().optional().openapi({ example: "C社へ初回訪問予定" }),
+      plan: z
+        .string()
+        .max(1000, "Planは1000文字以内で入力してください")
+        .nullable()
+        .optional()
+        .openapi({ example: "C社へ初回訪問予定" }),
       visit_records: z.array(visitRecordBodySchema),
     })
     .superRefine((data, ctx) => {

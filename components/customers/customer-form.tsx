@@ -150,6 +150,7 @@ export function CustomerForm(props: CustomerFormProps) {
             id="customer-company-name"
             value={companyName}
             onChange={(event) => setCompanyName(event.target.value)}
+            maxLength={200}
           />
         </Field>
         <Field>
@@ -158,6 +159,7 @@ export function CustomerForm(props: CustomerFormProps) {
             id="customer-contact-person"
             value={contactPerson}
             onChange={(event) => setContactPerson(event.target.value)}
+            maxLength={50}
           />
         </Field>
         <Field>
@@ -166,6 +168,7 @@ export function CustomerForm(props: CustomerFormProps) {
             id="customer-phone"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
+            maxLength={20}
           />
         </Field>
         <Field>
@@ -175,6 +178,7 @@ export function CustomerForm(props: CustomerFormProps) {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
           />
         </Field>
         <Field>
@@ -183,6 +187,7 @@ export function CustomerForm(props: CustomerFormProps) {
             id="customer-address"
             value={address}
             onChange={(event) => setAddress(event.target.value)}
+            maxLength={200}
           />
         </Field>
 

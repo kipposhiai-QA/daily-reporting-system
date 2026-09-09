@@ -48,5 +48,19 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/customers", () => {
       const fields = body.error.details.map((detail: { field: string }) => detail.field);
       expect(fields).toEqual(expect.arrayContaining(["company_name"]));
     });
+
+    it("会社名が200文字を超える場合は422になる (Issue #96)", async () => {
+      sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+      const response = await POST(
+        postRequest("http://localhost/api/customers", { company_name: "会".repeat(201) }),
+      );
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      const fields = body.error.details.map((detail: { field: string }) => detail.field);
+      expect(fields).toEqual(expect.arrayContaining(["company_name"]));
+    });
   });
 });

@@ -39,11 +39,36 @@ export function toCustomerResponse(customer: Customer): CustomerResponse {
 export const customerBodySchema = registry.register(
   "CustomerBody",
   z.object({
-    company_name: z.string().min(1, "会社名は必須です").openapi({ example: "株式会社A社" }),
-    contact_person: z.string().nullable().optional().openapi({ example: "佐藤様" }),
-    phone: z.string().nullable().optional().openapi({ example: "03-1234-5678" }),
-    email: z.string().nullable().optional().openapi({ example: "sato@a-corp.example.com" }),
-    address: z.string().nullable().optional().openapi({ example: "東京都千代田区..." }),
+    company_name: z
+      .string()
+      .min(1, "会社名は必須です")
+      .max(200, "会社名は200文字以内で入力してください")
+      .openapi({ example: "株式会社A社" }),
+    contact_person: z
+      .string()
+      .max(50, "担当者名は50文字以内で入力してください")
+      .nullable()
+      .optional()
+      .openapi({ example: "佐藤様" }),
+    phone: z
+      .string()
+      .max(20, "電話番号は20文字以内で入力してください")
+      .nullable()
+      .optional()
+      .openapi({ example: "03-1234-5678" }),
+    // メール形式のバリデーション(.email())は別Issue(#97)で対応する。
+    email: z
+      .string()
+      .max(254, "メールアドレスは254文字以内で入力してください")
+      .nullable()
+      .optional()
+      .openapi({ example: "sato@a-corp.example.com" }),
+    address: z
+      .string()
+      .max(200, "住所は200文字以内で入力してください")
+      .nullable()
+      .optional()
+      .openapi({ example: "東京都千代田区..." }),
   }),
 );
 

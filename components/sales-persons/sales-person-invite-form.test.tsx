@@ -48,6 +48,14 @@ afterEach(() => {
 });
 
 describe("SalesPersonInviteForm", () => {
+  it("caps each field's input length to match the API's max length (Issue #96)", () => {
+    render(<SalesPersonInviteForm />);
+
+    expect(screen.getByLabelText("氏名＊")).toHaveAttribute("maxLength", "50");
+    expect(screen.getByLabelText("メールアドレス＊")).toHaveAttribute("maxLength", "254");
+    expect(screen.getByLabelText("部署")).toHaveAttribute("maxLength", "100");
+  });
+
   it("rejects submission when name is empty", async () => {
     const user = userEvent.setup();
     render(<SalesPersonInviteForm />);

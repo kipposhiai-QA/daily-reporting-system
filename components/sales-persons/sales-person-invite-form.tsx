@@ -72,6 +72,7 @@ export function SalesPersonInviteForm() {
             id="sales-person-invite-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            maxLength={50}
           />
         </Field>
         <Field>
@@ -81,6 +82,7 @@ export function SalesPersonInviteForm() {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            maxLength={254}
           />
         </Field>
         <Field>
@@ -89,6 +91,7 @@ export function SalesPersonInviteForm() {
             id="sales-person-invite-department"
             value={department}
             onChange={(event) => setDepartment(event.target.value)}
+            maxLength={100}
           />
         </Field>
         <label htmlFor="sales-person-invite-is-manager" className="flex items-center gap-2 text-sm">

@@ -113,6 +113,18 @@ afterEach(() => {
 });
 
 describe("ReportForm (create mode)", () => {
+  it("caps Problem/Plan/visit content input length to match the API's max length (Issue #96)", async () => {
+    mockCurrentUser();
+    const user = userEvent.setup();
+
+    render(<ReportForm mode="create" />);
+    await user.click(await screen.findByRole("button", { name: "＋訪問記録を追加" }));
+
+    expect(screen.getByLabelText("Problem（課題・相談）")).toHaveAttribute("maxLength", "1000");
+    expect(screen.getByLabelText("Plan（明日やること）")).toHaveAttribute("maxLength", "1000");
+    expect(screen.getByLabelText("訪問記録1件目の訪問内容")).toHaveAttribute("maxLength", "500");
+  });
+
   it("adds a visit record row each time the add button is clicked (TC-SCR02-01)", async () => {
     mockCurrentUser();
     const user = userEvent.setup();

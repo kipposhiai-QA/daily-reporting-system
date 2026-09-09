@@ -69,4 +69,17 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports/:id/comments"
     const body = await response.json();
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
+
+  it("コメントが1000文字を超える場合は422になる (Issue #96)", async () => {
+    sessionMock.mockResolvedValue(mockSalesPersonSession(5));
+
+    const response = await POST(
+      postRequest("http://localhost/api/reports/10/comments", { comment: "確".repeat(1001) }),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
 });

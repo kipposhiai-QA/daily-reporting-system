@@ -161,6 +161,15 @@ describe("ReportDetail", () => {
     expect(screen.getByRole("button", { name: "投稿" })).toBeInTheDocument();
   });
 
+  it("caps the comment input length to match the API's max length (Issue #96)", async () => {
+    mockCurrentUser({ currentUser: SUZUKI, isManager: true });
+    apiGetMock.mockResolvedValue(REPORT_10);
+
+    render(<ReportDetail reportId="10" />);
+
+    expect(await screen.findByLabelText("コメント入力欄")).toHaveAttribute("maxLength", "1000");
+  });
+
   it("hides the comment form for a sales person (TC-SCR03-05)", async () => {
     mockCurrentUser();
     apiGetMock.mockResolvedValue(REPORT_10);

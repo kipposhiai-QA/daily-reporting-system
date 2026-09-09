@@ -367,6 +367,7 @@ export function ReportForm(props: ReportFormProps) {
                         onChange={(event) =>
                           updateRow(row.key, { visitContent: event.target.value })
                         }
+                        maxLength={500}
                       />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -406,12 +407,18 @@ export function ReportForm(props: ReportFormProps) {
           id="report-problem"
           value={problem}
           onChange={(event) => setProblem(event.target.value)}
+          maxLength={1000}
         />
       </Field>
 
       <Field>
         <FieldLabel htmlFor="report-plan">Plan（明日やること）</FieldLabel>
-        <Textarea id="report-plan" value={plan} onChange={(event) => setPlan(event.target.value)} />
+        <Textarea
+          id="report-plan"
+          value={plan}
+          onChange={(event) => setPlan(event.target.value)}
+          maxLength={1000}
+        />
       </Field>
 
       {formError && (

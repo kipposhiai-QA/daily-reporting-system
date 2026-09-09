@@ -115,6 +115,33 @@ describe("POST /api/reports/:id/comments", () => {
     expect(createCommentMock).not.toHaveBeenCalled();
   });
 
+  it("returns 422 when comment exceeds 1000 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    findUniqueReportMock.mockResolvedValue({ status: "SUBMITTED" } as never);
+
+    const response = await POST(postRequest({ comment: "確".repeat(1001) }), ctx("10"));
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(createCommentMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a comment at the 1000 character max length boundary and returns 201", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
+    findUniqueReportMock.mockResolvedValue({ status: "SUBMITTED" } as never);
+    const comment = "確".repeat(1000);
+    createCommentMock.mockResolvedValue({ ...CREATED_COMMENT, comment } as never);
+
+    const response = await POST(postRequest({ comment }), ctx("10"));
+
+    expect(response.status).toBe(201);
+    expect(createCommentMock).toHaveBeenCalledWith({
+      data: { report_id: 10, manager_id: 5, comment },
+      include: { manager: { select: { name: true } } },
+    });
+  });
+
   it("creates a comment on a SUBMITTED report and returns 201 (TC-API-CMT-03)", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(SUZUKI_MANAGER as never);
     findUniqueReportMock.mockResolvedValue({ status: "SUBMITTED" } as never);

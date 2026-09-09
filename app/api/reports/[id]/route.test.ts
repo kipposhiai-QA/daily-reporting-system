@@ -245,6 +245,41 @@ describe("PUT /api/reports/:id", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
+  it("returns 422 when visit_content exceeds 500 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+
+    const response = await PUT(
+      putRequest({
+        report_date: "2026-08-25",
+        status: "SUBMITTED",
+        visit_records: [{ customer_id: 1, visit_content: "訪".repeat(501) }],
+      }),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 when problem exceeds 1000 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
+
+    const response = await PUT(
+      putRequest({
+        report_date: "2026-08-25",
+        status: "DRAFT",
+        problem: "問".repeat(1001),
+        visit_records: [],
+      }),
+      ctx("10"),
+    );
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
   it("returns 409 when the changed report_date collides with another of the caller's reports", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     findUniqueReportMock.mockResolvedValue({ sales_person_id: 1 } as never);
