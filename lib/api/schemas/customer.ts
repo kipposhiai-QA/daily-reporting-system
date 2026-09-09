@@ -56,9 +56,9 @@ export const customerBodySchema = registry.register(
       .nullable()
       .optional()
       .openapi({ example: "03-1234-5678" }),
-    // メール形式のバリデーション(.email())は別Issue(#97)で対応する。
     email: z
       .string()
+      .email("メールアドレスの形式が不正です")
       .max(254, "メールアドレスは254文字以内で入力してください")
       .nullable()
       .optional()

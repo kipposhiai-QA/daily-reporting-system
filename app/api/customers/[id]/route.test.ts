@@ -130,6 +130,20 @@ describe("PUT /api/customers/:id", () => {
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("returns 422 when the email is malformed", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+
+    const response = await PUT(
+      makeRequest("PUT", { company_name: "株式会社A社", email: "notanemail" }),
+      ctx("1"),
+    );
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("updates and returns 200 on success", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockResolvedValue({ ...COMPANY_A, company_name: "株式会社A社（改称）" } as never);
