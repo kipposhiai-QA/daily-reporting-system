@@ -119,6 +119,17 @@ describe("PUT /api/customers/:id", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
+  it("returns 422 when company_name exceeds 200 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+
+    const response = await PUT(makeRequest("PUT", { company_name: "会".repeat(201) }), ctx("1"));
+
+    expect(response.status).toBe(422);
+    expect(updateMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
   it("updates and returns 200 on success", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     updateMock.mockResolvedValue({ ...COMPANY_A, company_name: "株式会社A社（改称）" } as never);

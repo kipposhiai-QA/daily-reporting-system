@@ -37,13 +37,23 @@ export function toSalesPersonResponse(salesPerson: SalesPerson): SalesPersonResp
 export const salesPersonBodySchema = registry.register(
   "SalesPersonBody",
   z.object({
-    name: z.string().min(1, "氏名は必須です").openapi({ example: "山田太郎" }),
+    name: z
+      .string()
+      .min(1, "氏名は必須です")
+      .max(50, "氏名は50文字以内で入力してください")
+      .openapi({ example: "山田太郎" }),
     email: z
       .string()
       .min(1, "メールアドレスは必須です")
       .email("メールアドレスの形式が不正です")
+      .max(254, "メールアドレスは254文字以内で入力してください")
       .openapi({ example: "yamada@example.com" }),
-    department: z.string().nullable().optional().openapi({ example: "営業1課" }),
+    department: z
+      .string()
+      .max(100, "部署は100文字以内で入力してください")
+      .nullable()
+      .optional()
+      .openapi({ example: "営業1課" }),
     is_manager: z.boolean().optional().openapi({ example: false }),
   }),
 );

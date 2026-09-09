@@ -96,5 +96,22 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/sales-persons", () =>
         expect(fields).toEqual(expect.arrayContaining(["email"]));
       },
     );
+
+    it("氏名が50文字を超える場合は422になる (Issue #96)", async () => {
+      sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+      const response = await POST(
+        postRequest("http://localhost/api/sales-persons", {
+          name: "田".repeat(51),
+          email: "sato@example.com",
+        }),
+      );
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+      const fields = body.error.details.map((detail: { field: string }) => detail.field);
+      expect(fields).toEqual(expect.arrayContaining(["name"]));
+    });
   });
 });

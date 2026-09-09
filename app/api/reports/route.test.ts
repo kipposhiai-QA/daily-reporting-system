@@ -200,6 +200,93 @@ describe("POST /api/reports", () => {
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("returns 422 when visit_content exceeds 500 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(
+      postRequest({
+        report_date: "2026-08-26",
+        status: "SUBMITTED",
+        visit_records: [{ customer_id: 1, visit_content: "訪".repeat(501) }],
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 422 when problem exceeds 1000 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(
+      postRequest({
+        report_date: "2026-08-26",
+        status: "DRAFT",
+        problem: "問".repeat(1001),
+        visit_records: [],
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 422 when plan exceeds 1000 characters", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(
+      postRequest({
+        report_date: "2026-08-26",
+        status: "DRAFT",
+        plan: "計".repeat(1001),
+        visit_records: [],
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("accepts visit_content/problem/plan at their max length boundary (500/1000/1000) and returns 201", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+    const visitContent = "訪".repeat(500);
+    const problem = "問".repeat(1000);
+    const plan = "計".repeat(1000);
+    createMock.mockResolvedValue({
+      ...CREATED_REPORT,
+      problem,
+      plan,
+      visit_records: [
+        {
+          visit_id: 201,
+          customer_id: 1,
+          customer: { company_name: "株式会社A社" },
+          visit_content: visitContent,
+          visit_time: null,
+          created_at: new Date("2026-08-26T09:00:00.000Z"),
+        },
+      ],
+    } as never);
+
+    const response = await POST(
+      postRequest({
+        report_date: "2026-08-26",
+        status: "SUBMITTED",
+        problem,
+        plan,
+        visit_records: [{ customer_id: 1, visit_content: visitContent }],
+      }),
+    );
+
+    expect(response.status).toBe(201);
+  });
+
   it("allows DRAFT with zero visit_records and returns 201", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockResolvedValue({

@@ -54,6 +54,14 @@ afterEach(() => {
 });
 
 describe("SalesPersonForm (create mode)", () => {
+  it("caps each field's input length to match the API's max length (Issue #96)", () => {
+    render(<SalesPersonForm mode="create" />);
+
+    expect(screen.getByLabelText("氏名＊")).toHaveAttribute("maxLength", "50");
+    expect(screen.getByLabelText("メールアドレス＊")).toHaveAttribute("maxLength", "254");
+    expect(screen.getByLabelText("部署")).toHaveAttribute("maxLength", "100");
+  });
+
   it("rejects submission when name and email are empty (TC-SCR07-01)", async () => {
     const user = userEvent.setup();
 

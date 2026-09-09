@@ -111,6 +111,20 @@ describe("POST /api/sales-persons/invite", () => {
     },
   );
 
+  it("returns 422 when name exceeds 50 characters, without calling the Admin API", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
+
+    const response = await POST(postRequest({ name: "佐".repeat(51), email: "sato@example.com" }));
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const fields = body.error.details.map((d: { field: string }) => d.field);
+    expect(fields).toEqual(expect.arrayContaining(["name"]));
+    expect(createMock).not.toHaveBeenCalled();
+    expect(inviteUserByEmail).not.toHaveBeenCalled();
+  });
+
   it("returns 409 without calling the Admin API when the email is already used by a SalesPerson", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(YAMADA as never);
     createMock.mockRejectedValue(

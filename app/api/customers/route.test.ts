@@ -131,6 +131,64 @@ describe("POST /api/customers", () => {
     expect(body.error.details).toEqual([{ field: "company_name", message: expect.any(String) }]);
   });
 
+  it.each([
+    ["company_name", "会".repeat(201)],
+    ["contact_person", "様".repeat(51)],
+    ["phone", "0".repeat(21)],
+    ["email", `${"a".repeat(243)}@example.com`],
+    ["address", "町".repeat(201)],
+  ])("returns 422 when %s exceeds its max length", async (field, value) => {
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+
+    const response = await POST(postRequest({ company_name: "株式会社A社", [field]: value }));
+
+    expect(response.status).toBe(422);
+    expect(createMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const fields = body.error.details.map((d: { field: string }) => d.field);
+    expect(fields).toEqual(expect.arrayContaining([field]));
+  });
+
+  it("accepts every field at its max length boundary (200/50/20/254/200) and returns 201", async () => {
+    getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
+    const companyName = "会".repeat(200);
+    const contactPerson = "様".repeat(50);
+    const phone = "0".repeat(20);
+    const email = `${"a".repeat(242)}@example.com`;
+    const address = "町".repeat(200);
+    expect(email).toHaveLength(254);
+    createMock.mockResolvedValue({
+      ...COMPANY_A,
+      company_name: companyName,
+      contact_person: contactPerson,
+      phone,
+      email,
+      address,
+    } as never);
+
+    const response = await POST(
+      postRequest({
+        company_name: companyName,
+        contact_person: contactPerson,
+        phone,
+        email,
+        address,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith({
+      data: {
+        company_name: companyName,
+        contact_person: contactPerson,
+        phone,
+        email,
+        address,
+      },
+    });
+  });
+
   it("creates a customer with only company_name and returns 201", async () => {
     getSalesPersonFromSessionMock.mockResolvedValue(CURRENT_USER as never);
     createMock.mockResolvedValue({

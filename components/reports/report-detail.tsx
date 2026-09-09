@@ -187,6 +187,7 @@ export function ReportDetail({ reportId }: ReportDetailProps) {
               aria-label="コメント入力欄"
               value={commentText}
               onChange={(event) => setCommentText(event.target.value)}
+              maxLength={1000}
             />
             {commentError && <p className="text-destructive text-sm">{commentError}</p>}
             <Button

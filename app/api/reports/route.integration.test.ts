@@ -137,5 +137,21 @@ describe.skipIf(!hasTestDatabase())("結合テスト: /api/reports", () => {
       expect(body.error.code).toBe("VALIDATION_ERROR");
       expect(body.error.message).toBe("指定された顧客が見つかりません");
     });
+
+    it("訪問内容が500文字を超える場合は422になる (Issue #96)", async () => {
+      sessionMock.mockResolvedValue(mockSalesPersonSession(1));
+
+      const response = await POST(
+        postRequest("http://localhost/api/reports", {
+          report_date: "2026-08-26",
+          status: "SUBMITTED",
+          visit_records: [{ customer_id: 1, visit_content: "訪".repeat(501) }],
+        }),
+      );
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+    });
   });
 });
