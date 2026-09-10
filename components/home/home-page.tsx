@@ -1,6 +1,9 @@
+"use client";
+
 import Link from "next/link";
 import { FileTextIcon, type LucideIcon, RocketIcon, SettingsIcon, UsersIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCurrentUser } from "@/lib/current-user-context";
 
 interface FeatureLink {
   href: string;
@@ -10,9 +13,11 @@ interface FeatureLink {
   cta: string;
 }
 
+const LOGIN_HREF = "/login";
+
 const FEATURE_LINKS: FeatureLink[] = [
   {
-    href: "/login",
+    href: LOGIN_HREF,
     title: "クイックスタート",
     description: "システムを利用開始するには、まずログインしてください。",
     icon: RocketIcon,
@@ -42,6 +47,17 @@ const FEATURE_LINKS: FeatureLink[] = [
 ];
 
 export function HomePage() {
+  const { isLoading, currentUser } = useCurrentUser();
+
+  // ログイン済みの場合、proxy.ts が /login へのアクセスを / へ即座にリダイレクトして
+  // しまうため、「クイックスタート」カードを表示したままだと押しても無反応に見える
+  // (参照: 本番環境での報告)。ログイン確認が取れるまで(isLoading中)は現状維持のまま
+  // 表示し、ログイン済みと判明した時点でカードを取り除く。
+  const featureLinks =
+    !isLoading && currentUser
+      ? FEATURE_LINKS.filter((feature) => feature.href !== LOGIN_HREF)
+      : FEATURE_LINKS;
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center gap-10 p-4 py-12 sm:p-8">
       <div className="flex flex-col items-center gap-2 text-center">
@@ -52,7 +68,7 @@ export function HomePage() {
       </div>
 
       <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2">
-        {FEATURE_LINKS.map((feature) => {
+        {featureLinks.map((feature) => {
           const Icon = feature.icon;
           return (
             <Card key={feature.href}>
