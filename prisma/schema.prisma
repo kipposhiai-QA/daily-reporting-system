@@ -1,0 +1,104 @@
+// Prisma schema — 営業日報システム
+// 参照: docs/requirements.md 7章（ER図）/ 8章（テーブル定義補足）
+//
+// Prisma ORM v7 では接続情報（url / directUrl / shadowDatabaseUrl）は
+// schema.prisma ではなく prisma.config.ts 側で管理する。
+// 学習元: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+
+  @@map("report_status")
+}
+
+/// 営業マスタ（is_manager で営業／上長を区別する）
+model SalesPerson {
+  sales_person_id Int      @id @default(autoincrement())
+  name            String
+  email           String   @unique
+  department      String?
+  is_manager      Boolean  @default(false)
+  /// Supabase Auth のユーザーUUID（auth.users.id）。認証ユーザーとの紐付けが未実施の間はnull。
+  auth_user_id    String?  @unique @db.Uuid
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  daily_reports    DailyReport[]    @relation("SalesPersonReports")
+  manager_comments ManagerComment[] @relation("ManagerComments")
+
+  @@map("sales_person")
+}
+
+/// 顧客マスタ
+model Customer {
+  customer_id    Int      @id @default(autoincrement())
+  company_name   String
+  contact_person String?
+  phone          String?
+  email          String?
+  address        String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  visit_records VisitRecord[]
+
+  @@map("customer")
+}
+
+/// 日報（1営業・1対象日につき1件、UNIQUE制約あり）
+model DailyReport {
+  report_id       Int          @id @default(autoincrement())
+  sales_person_id Int
+  report_date     DateTime     @db.Date
+  status          ReportStatus @default(DRAFT)
+  problem         String?
+  plan            String?
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  sales_person  SalesPerson      @relation("SalesPersonReports", fields: [sales_person_id], references: [sales_person_id], onDelete: Restrict)
+  visit_records VisitRecord[]
+  comments      ManagerComment[]
+
+  @@unique([sales_person_id, report_date])
+  @@map("daily_report")
+}
+
+/// 訪問記録（日報 × 顧客、可変長行）
+model VisitRecord {
+  visit_id      Int       @id @default(autoincrement())
+  report_id     Int
+  customer_id   Int
+  visit_content String
+  visit_time    DateTime? @db.Time
+  created_at    DateTime  @default(now())
+
+  daily_report DailyReport @relation(fields: [report_id], references: [report_id], onDelete: Cascade)
+  customer     Customer    @relation(fields: [customer_id], references: [customer_id], onDelete: Restrict)
+
+  @@map("visit_record")
+}
+
+/// 上長コメント（提出済み日報に対して上長が投稿）
+model ManagerComment {
+  comment_id Int      @id @default(autoincrement())
+  report_id  Int
+  manager_id Int
+  comment    String
+  created_at DateTime @default(now())
+
+  daily_report DailyReport @relation(fields: [report_id], references: [report_id], onDelete: Cascade)
+  manager      SalesPerson @relation("ManagerComments", fields: [manager_id], references: [sales_person_id], onDelete: Restrict)
+
+  @@map("manager_comment")
+}

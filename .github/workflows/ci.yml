@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-db-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    env:
+      # postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts,
+      # but generate only reads the schema and never connects to the DB, so a dummy value is fine.
+      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+      # API結合テスト（app/api/**/*.integration.test.ts）専用のテストDB。本番相当のDBを
+      # 誤ってTRUNCATEしないよう、deployジョブが使うDATABASE_URL/DIRECT_URLとは別の
+      # Secretsを使う。未設定の場合は以下のステップ・結合テストともにスキップされる
+      # （セットアップ手順は docs/test-specification.md 2.1 参照）。
+      # `if:` 条件式は secrets コンテキストを直接参照できないため、一度 env を経由する。
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      TEST_DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run format:check
+
+      - name: Apply migrations to the test database
+        if: ${{ env.TEST_DATABASE_URL != '' }}
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ env.TEST_DIRECT_URL }}
+
+      - run: npm run test
+
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      # postinstall (`prisma generate`) requires DATABASE_URL to resolve prisma.config.ts at
+      # `npm ci` time, before the local Supabase stack (and its real DB URL) exists yet.
+      # Overwritten with the real local DB URL once `supabase start` has run (see below).
+      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+      E2E_BASE_URL: "http://127.0.0.1:3000"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ローカルのSupabase CLIスタック（Postgres + Auth + Mailpit〔メールキャプチャ〕等）を
+      # 起動する。共有/本番のSupabaseプロジェクトには一切触れない（参照: e2e/global-setup.ts）。
+      - name: Start local Supabase stack
+        run: supabase start
+
+      # `supabase status -o env` の出力キー名（API_URL/DB_URL/ANON_KEY/SERVICE_ROLE_KEY/
+      # MAILPIT_URL）を、このワークフロー・Playwright側で使う名前（E2E_*, NEXT_PUBLIC_*,
+      # DATABASE_URL等）にマッピングする。$GITHUB_ENV への書き込みは次のステップ以降にしか
+      # 反映されないため、このステップ内で参照するには一度 eval してシェル変数として展開する
+      # 必要がある。
+      - name: Export local Supabase connection info
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "E2E_SUPABASE_URL=${API_URL}"
+            echo "E2E_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "E2E_SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}"
+            echo "E2E_DATABASE_URL=${DB_URL}"
+            echo "E2E_MAILPIT_URL=${MAILPIT_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
+            echo "DATABASE_URL=${DB_URL}"
+            echo "DIRECT_URL=${DB_URL}"
+          } >> "$GITHUB_ENV"
+
+      - name: Apply migrations to the local Supabase database
+        run: npx prisma migrate deploy
+
+      # NEXT_PUBLIC_* はビルド時にクライアントバンドルへ埋め込まれるため、ローカルスタックの
+      # URL/anon keyを設定した上でここでビルドする（参照: docs/deployment.md）。
+      - name: Build
+        run: npm run build
+
+      # next.config.ts の `output: "standalone"` により `next start` は使えない（起動時に
+      # 警告を出して失敗する）。Dockerfileと同様、.next/standalone/server.js を直接起動する
+      # ため、静的アセット（public/、.next/static/）を手動でコピーする（参照: Dockerfile）。
+      - name: Prepare standalone server static assets
+        run: |
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop
+
+  deploy:
+    needs: lint-test-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - run: make release
+        env:
+          # Cloud Runの環境変数として渡すSupabase接続情報。Makefileにはハードコードせず、
+          # GitHub Secretsから読み込む（docs/deployment.md参照）。
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          # Supabase Admin API（招待メール送信等）用のService Roleキー。サーバー側専用のため
+          # NEXT_PUBLIC_ プレフィックスは付けない（docs/deployment.md参照。Issue #74）。
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Next.jsのビルド時にクライアントバンドルへ埋め込まれるSupabase Auth接続情報。
+          # DATABASE_URL/DIRECT_URLと異なりCloud Runの実行時環境変数では反映できないため、
+          # `make build` がdocker buildの--build-argとして渡す（docs/deployment.md参照）。
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
