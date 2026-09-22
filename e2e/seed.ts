@@ -21,7 +21,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@/generated/prisma/client";
 import { resetAndSeed } from "@/prisma/seed-data";
-import { PASSWORD_RESET_TEST_USER, TEST_USER } from "./fixtures/test-users";
+import { LOGOUT_TEST_USER, PASSWORD_RESET_TEST_USER, TEST_USER } from "./fixtures/test-users";
 
 interface AuthTestUser {
   readonly salesPersonId: number;
@@ -74,10 +74,11 @@ async function main(): Promise<void> {
   try {
     await resetAndSeed(prisma);
 
-    // TEST_USER（login.spec.ts / report-flow.spec.ts用）とPASSWORD_RESET_TEST_USER
-    // （reset-password.spec.ts専用。パスワードを書き換えるためTEST_USERとは別アカウントにする）
-    // の両方にSupabase Authユーザーを作成・紐付けする。
-    for (const user of [TEST_USER, PASSWORD_RESET_TEST_USER]) {
+    // TEST_USER（report-flow.spec.ts等用）、PASSWORD_RESET_TEST_USER
+    // （reset-password.spec.ts専用。パスワードを書き換えるため別アカウントにする）、
+    // LOGOUT_TEST_USER（login.spec.tsのログアウト専用。signOut()が同一ユーザーの全セッションを
+    // 失効させるため別アカウントにする）にSupabase Authユーザーを作成・紐付けする。
+    for (const user of [TEST_USER, PASSWORD_RESET_TEST_USER, LOGOUT_TEST_USER]) {
       const authUserId = await ensureTestAuthUser(supabaseAdmin, user);
       await prisma.salesPerson.update({
         where: { sales_person_id: user.salesPersonId },

@@ -13,9 +13,11 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel("パスワード", { exact: true }).fill(TEST_USER.password);
   await page.getByRole("button", { name: "ログイン" }).click();
   await expect(page).toHaveURL("/");
+  await expect(page.getByText(`${TEST_USER.name}（${TEST_USER.roleLabel}）`)).toBeVisible();
 }
 
 test.describe("日報の作成→一覧→詳細", () => {
+  test.describe.configure({ mode: "serial" });
   test("訪問記録を入力して提出すると、一覧・詳細に反映される", async ({ page }) => {
     await login(page);
 
@@ -82,5 +84,15 @@ test.describe("日報の作成→一覧→詳細", () => {
     await expect(page.getByText("下書き")).toBeVisible();
     await expect(page.getByText("訪問記録はありません")).toBeVisible();
     await expect(page.getByText("特になし")).toBeVisible();
+  });
+
+  test("対象日を入力せず提出しようとすると、エラーメッセージが表示される", async ({ page }) => {
+    await login(page);
+
+    await page.goto("/reports/new");
+    await page.getByLabel("対象日").clear();
+    await page.getByRole("button", { name: "提出する" }).click();
+    await expect(page.getByText("対象日を入力してください")).toBeVisible();
+    await expect(page).toHaveURL("/reports/new");
   });
 });
