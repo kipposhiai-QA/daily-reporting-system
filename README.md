@@ -22,15 +22,15 @@
 
 ## 技術構成
 
-| 分類 | 技術 |
-|---|---|
+| 分類           | 技術                                                      |
+| -------------- | --------------------------------------------------------- |
 | フロントエンド | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui |
-| バックエンド | Next.js API Routes, Prisma |
-| データベース | Supabase (PostgreSQL) |
-| 認証 | Supabase Auth |
-| テスト | Vitest (単体・結合), Playwright (E2E) |
-| CI/CD | GitHub Actions |
-| インフラ | Google Cloud Run |
+| バックエンド   | Next.js API Routes, Prisma                                |
+| データベース   | Supabase (PostgreSQL)                                     |
+| 認証           | Supabase Auth                                             |
+| テスト         | Vitest (単体・結合), Playwright (E2E)                     |
+| CI/CD          | GitHub Actions                                            |
+| インフラ       | Google Cloud Run                                          |
 
 ## テスト・品質への取り組み
 
