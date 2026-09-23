@@ -129,36 +129,4 @@ jobs:
         if: always()
         run: supabase stop
 
-  deploy:
-    needs: lint-test-build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - run: make release
-        env:
-          # Cloud Runの環境変数として渡すSupabase接続情報。Makefileにはハードコードせず、
-          # GitHub Secretsから読み込む（docs/deployment.md参照）。
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-          # Supabase Admin API（招待メール送信等）用のService Roleキー。サーバー側専用のため
-          # NEXT_PUBLIC_ プレフィックスは付けない（docs/deployment.md参照。Issue #74）。
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Next.jsのビルド時にクライアントバンドルへ埋め込まれるSupabase Auth接続情報。
-          # DATABASE_URL/DIRECT_URLと異なりCloud Runの実行時環境変数では反映できないため、
-          # `make build` がdocker buildの--build-argとして渡す（docs/deployment.md参照）。
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+  
