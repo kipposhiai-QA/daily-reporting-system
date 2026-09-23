@@ -21,3 +21,15 @@ export const PASSWORD_RESET_TEST_USER = {
   email: "tanaka@example.com",
   password: "password123",
 } as const;
+
+// ログイン→ログアウトのE2E（e2e/login.spec.ts）専用のテストアカウント。
+// signOut() は既定で同じユーザーの全セッションを失効させるため、TEST_USER を共用すると
+// 並列実行中の他のspec（report-flow.spec.ts 等）のセッションが切れてしまう。
+// prisma/seed-data.ts の sales_person_id=5（鈴木一郎）に、別のSupabase Authユーザーを紐付けて使う。
+export const LOGOUT_TEST_USER = {
+  salesPersonId: 5,
+  name: "鈴木一郎",
+  roleLabel: "上長",
+  email: "suzuki@example.com",
+  password: "password123",
+} as const;

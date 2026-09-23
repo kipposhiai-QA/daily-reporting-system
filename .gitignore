@@ -61,3 +61,14 @@ next-env.d.ts
 
 # Claude Code local session lock (not project content)
 .claude/scheduled_tasks.lock
+.env.e2e
+supabase/snippets
+# エディタ・ツールのローカル設定
+.claude/settings.local.json
+.vscode/
+
+# テスト結果のエクスポート
+*.xlsx
+
+# 旧テストファイル
+tests/old/

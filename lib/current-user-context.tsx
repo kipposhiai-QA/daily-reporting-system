@@ -1,6 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import type { SalesPersonResponse } from "@/lib/api/schemas/sales-person";
 
@@ -41,16 +49,18 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
   const [currentUser, setCurrentUser] = useState<SalesPersonResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequestId = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      const requestId = ++latestRequestId.current;
       const [salesPersonsResult, currentUserResult] = await Promise.allSettled([
         apiClient.get<SalesPersonResponse[]>("/sales-persons"),
         apiClient.get<SalesPersonResponse>("/auth/me"),
       ]);
-      if (cancelled) return;
+      if (cancelled || requestId !== latestRequestId.current) return;
 
       if (salesPersonsResult.status === "fulfilled") {
         setSalesPersons(salesPersonsResult.value);
@@ -83,6 +93,7 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
   // 呼び出すための再取得関数（参照: Issue #66）。上記のマウント時useEffectとは独立して
   // 呼び出し側（components/auth/login-form.tsx）から明示的に呼ばれる。
   const refresh = useCallback(async () => {
+    const requestId = ++latestRequestId.current;
     setIsLoading(true);
     setError(null);
 
@@ -90,6 +101,7 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
       apiClient.get<SalesPersonResponse[]>("/sales-persons"),
       apiClient.get<SalesPersonResponse>("/auth/me"),
     ]);
+    if (requestId !== latestRequestId.current) return;
 
     if (salesPersonsResult.status === "fulfilled") {
       setSalesPersons(salesPersonsResult.value);
